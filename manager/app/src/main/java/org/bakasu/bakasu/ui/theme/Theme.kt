@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MotionScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.SideEffect
@@ -194,10 +195,36 @@ class BackgroundRenderState {
     var blurViewportSize by mutableStateOf(IntSize(0, 0))
     var blurFrameTick by mutableIntStateOf(0)
     var scrollActive by mutableStateOf(false)
+
+    // 页面自有的内容动画（展开/折叠等）正在改变透明面板的尺寸或位置。这类动画不产生嵌套
+    // 滚动事件，不打开该通道时模糊采样会停留在动画开始时的坐标上。
+    private var contentAnimationCount by mutableIntStateOf(0)
+    val contentAnimating: Boolean
+        get() = contentAnimationCount > 0
+
     private val scrollingPagers = mutableStateMapOf<Any, Unit>()
     val pagerScrollActive: Boolean
         get() = scrollingPagers.isNotEmpty()
+
+    /** 透明面板是否需要重新采样背景（滚动、翻页或内容动画任一进行中）。 */
+    val isContentMoving: Boolean
+        get() = scrollActive || pagerScrollActive || contentAnimating
+
     var seedColor by mutableIntStateOf(0)
+
+    internal fun beginContentAnimation() {
+        contentAnimationCount++
+    }
+
+    internal fun endContentAnimation() {
+        if (contentAnimationCount > 0) {
+            contentAnimationCount--
+        }
+    }
+
+    internal fun bumpBlurFrameTick() {
+        blurFrameTick = if (blurFrameTick == Int.MAX_VALUE) 0 else blurFrameTick + 1
+    }
 
     internal fun updatePagerScroll(owner: Any, active: Boolean) {
         if (active) {
@@ -519,26 +546,19 @@ private fun BackgroundLayer(
     }
 
     // Translucent surfaces must re-sample/re-map the background only while content is actually
-    // moving: nested-scroll drags/flings (scrollActive) and horizontal pager swipes, which
-    // translate layers without re-recording backdrop nodes (pagerScrollActive). At rest the loop
-    // is suspended and no frame is produced, so hwui stays idle. The tick must never be bumped
-    // from a draw callback, which would self-sustain through consumers inside the source subtree.
+    // moving: nested-scroll drags/flings (scrollActive), horizontal pager swipes, which translate
+    // layers without re-recording backdrop nodes (pagerScrollActive), and in-place content
+    // animations such as card expand/collapse (contentAnimating). At rest the loop is suspended
+    // and no frame is produced, so hwui stays idle. The tick must never be bumped from a draw
+    // callback, which would self-sustain through consumers inside the source subtree.
     LaunchedEffect(Unit) {
         snapshotFlow {
-            renderState.imageBitmap != null &&
-                (renderState.scrollActive || renderState.pagerScrollActive)
+            renderState.imageBitmap != null && renderState.isContentMoving
         }.collect { active ->
             if (!active) return@collect
-            while (
-                renderState.imageBitmap != null &&
-                (renderState.scrollActive || renderState.pagerScrollActive)
-            ) {
+            while (renderState.imageBitmap != null && renderState.isContentMoving) {
                 withFrameNanos { }
-                renderState.blurFrameTick = if (renderState.blurFrameTick == Int.MAX_VALUE) {
-                    0
-                } else {
-                    renderState.blurFrameTick + 1
-                }
+                renderState.bumpBlurFrameTick()
             }
         }
     }
@@ -2111,4 +2131,24 @@ fun isInDarkTheme(themeMode: Boolean?): Boolean = when (themeMode) {
     false -> false
 
     null -> isSystemInDarkTheme() // 跟随系统
+}
+
+/**
+ * 在内容动画（展开/折叠、尺寸变化等）期间保持透明面板的背景重采样。
+ *
+ * 改变高度的动画不会产生嵌套滚动事件，[Modifier.renderBackgroundBlur] 的采样坐标会停留在
+ * 动画开始时的位置，表现为卡片背景扭曲错位，需要再次滑动列表才恢复。内容动画开始时把
+ * [active] 置为 true，动画结束（[MutableTransitionState.isIdle]）后自动关闭。
+ *
+ * @param active 是否存在正在进行的内容动画
+ */
+@Composable
+fun ContentAnimationTicker(active: Boolean) {
+    val renderState = LocalBackgroundRenderState.current
+    DisposableEffect(renderState, active) {
+        if (active) renderState.beginContentAnimation()
+        onDispose {
+            if (active) renderState.endContentAnimation()
+        }
+    }
 }

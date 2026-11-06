@@ -108,6 +108,21 @@ pub fn on_post_fs_data() -> Result<()> {
     // Load susfs config entries that must capture metadata before mounts/overlays.
     crate::android::susfs::init_event::on_post_fs_data();
 
+    // NoMount 内置注入: 仅在总开关启用时执行 (替代 metamount.sh)
+    if crate::android::nomount::is_enabled() {
+        if let Err(e) = crate::android::nomount::mount::inject_modules() {
+            warn!("nomount: 模块注入失败: {e:#}");
+        }
+        // 重放手动自定义规则 (持久化文件)
+        if let Err(e) = crate::android::nomount::replay_custom_rules() {
+            warn!("nomount: 自定义规则重放失败: {e:#}");
+        }
+        // 恢复 UID 排除列表与隔离进程拦截开关 (内核态, 重启即丢失)
+        if let Err(e) = crate::android::nomount::apply_boot_state() {
+            warn!("nomount: 恢复 UID 排除/隔离拦截失败: {e:#}");
+        }
+    }
+
     // execute metamodule post-fs-data script first (priority)
     if let Err(e) = metamodule::exec_stage_script("post-fs-data", wait) {
         warn!("exec metamodule post-fs-data script failed: {e}");
@@ -205,6 +220,10 @@ pub fn on_boot_completed() {
     // Load susfs boot-completed
     if !is_safe_mode() {
         crate::android::susfs::init_event::on_boot_completed();
+    }
+    // 开机应用固化 IO 调度器 (覆盖厂商 init 的写入)
+    if let Err(e) = crate::android::iosched::apply_if_enabled() {
+        warn!("apply iosched failed: {e}");
     }
 }
 

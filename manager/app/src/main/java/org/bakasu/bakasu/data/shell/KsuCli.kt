@@ -36,6 +36,28 @@ class KsuCliRepository(context: Context) {
     private companion object {
         const val TAG = "KsuCli"
         val MODULE_ID_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9._-]+$")
+
+        /** root shell 默认命令超时 (秒), 防止 su 会话卡死导致 exec 永久阻塞 */
+        const val SHELL_TIMEOUT_SECONDS = 15L
+
+        /**
+         * NoMount 专用 shell 超时 (秒).
+         * v2.2.0 协议下 set-enabled 1 需要按 4068 字节分片把所有模块文件注入内核,
+         * 每个分片都是一次独立的 add_key 同步往返, 模块较多时耗时远超默认 15s.
+         */
+        const val NOMOUNT_TIMEOUT_SECONDS = 180L
+
+        /**
+         * 被内核判定为"官方管理器签名"的指纹集合.
+         * 必须与 kernel/manager/manager_sign.h + kernel/manager/apk_sign.c 的白名单保持一致;
+         * 指纹格式来自 `ksud debug get-sign <apk>` 输出: "size: 0xNNN, hash: <sha256>".
+         */
+        val KNOWN_OFFICIAL_SIGNATURES = setOf(
+            // Baka-SU/BakaSU 上游发布密钥
+            "size: 0x377, hash: d3469712b6214462764a1d8d3e5cbe1d6819a0b629791b9f4101867821f1df64",
+            // WGecy/BakaSU release-key (2026-10-31 重新生成, 与 CI secrets 一致)
+            "size: 0x32a, hash: 9abde89ef090198b0e5c5004110f223a3f59f5f238ac69770739feb9ef462d49",
+        )
     }
 
     private val nativeLibraryDir = context.applicationInfo.nativeLibraryDir
@@ -65,6 +87,12 @@ class KsuCliRepository(context: Context) {
         }
     }
 
+    /** Drop the cached shells so the next call rebuilds them (used after a failed exec). */
+    fun invalidateCachedShell() = synchronized(shellLock) {
+        rootShell = null
+        globalMountShell = null
+    }
+
     fun generateMainShellBuilder(): Shell.Builder {
         val builder = Shell.Builder.create()
         try {
@@ -90,9 +118,13 @@ class KsuCliRepository(context: Context) {
         block: Shell.() -> T,
     ): T = createRootShell(globalMnt).use(block)
 
-    fun createRootShell(globalMnt: Boolean = false): Shell {
+    fun createRootShell(
+        globalMnt: Boolean = false,
+        timeoutSeconds: Long = SHELL_TIMEOUT_SECONDS,
+    ): Shell {
         Shell.enableVerboseLogging = BuildConfig.DEBUG
         val builder = Shell.Builder.create()
+            .setTimeout(timeoutSeconds)
         return try {
             if (globalMnt) {
                 builder.build(getKsuDaemonPath(), "debug", "su", "-g")
@@ -171,8 +203,7 @@ class KsuCliRepository(context: Context) {
         val out = shell.newJob()
             .add("${getKsuDaemonPath()} debug get-sign ${shellQuote(packageResourcePath)}")
             .to(ArrayList<String>(), null).exec().out
-        out.firstOrNull()?.trim()
-            .orEmpty() == "size: 0x377, hash: d3469712b6214462764a1d8d3e5cbe1d6819a0b629791b9f4101867821f1df64"
+        out.firstOrNull()?.trim().orEmpty() in KNOWN_OFFICIAL_SIGNATURES
     }
 
     suspend fun getFeatureStatus(feature: String): String = withContext(Dispatchers.IO) {
@@ -197,6 +228,57 @@ class KsuCliRepository(context: Context) {
         val valueLine =
             out.firstOrNull { it.trim().startsWith("Value:") } ?: return@withContext null
         valueLine.substringAfter("Value:").trim().toLongOrNull()
+    }
+
+    /**
+     * 一次性长超时 root shell, 用完立即销毁, 避免把长超时污染到复用的常驻 shell.
+     * 创建失败时退回常驻 shell.
+     */
+    private fun <T> withNomountShell(block: Shell.() -> T): T {
+        val shell = try {
+            createRootShell(globalMnt = false, timeoutSeconds = NOMOUNT_TIMEOUT_SECONDS)
+        } catch (e: Throwable) {
+            Log.w(TAG, "nomount shell create failed, fallback to cached shell", e)
+            return getRootShell().block()
+        }
+        return shell.use(block)
+    }
+
+    /**
+     * 在长超时 nomount shell 中执行 `ksud nomount <args>`.
+     *
+     * 失败时以 stderr (或 stdout) 构造异常, 便于上层直接展示原因.
+     */
+    suspend fun execNomount(args: String): Result<String> = withContext(Dispatchers.IO) {
+        withNomountShell {
+            val command = "${getKsuDaemonPath()} nomount $args"
+            val result = newJob().add(command).to(ArrayList<String>(), null).exec()
+            val stdout = result.out.joinToString("\n").trim()
+            if (result.isSuccess) {
+                Result.success(stdout)
+            } else {
+                val stderr = result.err.joinToString("\n").trim()
+                Result.failure(
+                    IllegalStateException(
+                        stderr.ifBlank { stdout }.ifBlank { "nomount $args failed" },
+                    ),
+                )
+            }
+        }
+    }
+
+    /** 创建/删除模块的 skip_mount 标记, 供内置挂载系统管理器使用. */
+    suspend fun setModuleSkipMount(moduleId: String, skip: Boolean): Boolean = withContext(Dispatchers.IO) {
+        if (!MODULE_ID_REGEX.matches(moduleId)) return@withContext false
+        val file = "/data/adb/modules/$moduleId/skip_mount"
+        withNomountShell {
+            val command = if (skip) {
+                "touch ${shellQuote(file)}"
+            } else {
+                "rm -f ${shellQuote(file)}"
+            }
+            newJob().add(command).to(ArrayList<String>(), null).exec().isSuccess
+        }
     }
 
     fun install() {
@@ -645,6 +727,16 @@ class KsuCliRepository(context: Context) {
         .exec().out
         .joinToString("\n")
 
+    /** 执行 root 命令, 返回输出 (无输出返回 null) — 复用常驻 shell, 失败重建重试一次 */
+    fun exec(cmd: String): String? = execWithShell(getRootShell(), cmd) ?: run {
+        invalidateCachedShell()
+        execWithShell(getRootShell(), cmd)
+    }
+
+    private fun execWithShell(shell: Shell, cmd: String): String? = runCatching {
+        runCmd(shell, cmd)
+    }.getOrNull()?.takeIf { it.isNotBlank() }
+
     fun forceStopApp(packageName: String) {
         val shell = getRootShell()
         val result = shell.newJob().add("am force-stop $packageName").exec()
@@ -665,8 +757,19 @@ class KsuCliRepository(context: Context) {
         launchApp(packageName)
     }
 
+    /** NoMount 内置检测: 内核支持 && 内置挂载已启用 (enabled 标志) — 实时检测不缓存 */
+    fun isNoMountBuiltIn(): Boolean = runCatching {
+        // `nomount status` 已同时输出 supported/enabled, 一次 root 往返即可判断
+        val status = exec("${getKsuDaemonPath()} nomount status").orEmpty()
+        status.contains("supported: true") && status.contains("enabled: true")
+    }.getOrDefault(false)
+
     fun getMetaModuleImplement(): String {
         try {
+            // NoMount 内置 (ksud 注入) 时, 元模块功能由内核内置替代 → 显示 nomount
+            if (isNoMountBuiltIn()) {
+                return "nomount"
+            }
             val metaModuleProp = SuFile.open("/data/adb/metamodule/module.prop")
             if (!metaModuleProp.isFile) {
                 Log.i(TAG, "Meta module implement: None")

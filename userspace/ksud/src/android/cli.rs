@@ -9,6 +9,7 @@ use crate::{
     android::{
         debug, dynamic_manager, feature, init_event, ksucalls,
         module::{self, module_config, regenerate_preinit},
+        nomount::{self, cli::NoMountArgs},
         profile, sepolicy, su, sulog, susfs, uapi, umount_config, utils,
     },
     anykernel3::{self, Slot},
@@ -168,6 +169,17 @@ enum Commands {
 
     /// Manage susfs component
     Susfs(susfs::cli::SusfsArgs),
+
+    /// NoMount: VFS 路径重定向管理
+    #[command(name = "nomount")]
+    NoMount(NoMountArgs),
+
+    /// IO 调度器固化 (apply/clear)
+    #[command(name = "iosched")]
+    IoSched {
+        #[command(subcommand)]
+        op: IoSchedOp,
+    },
 
     /// Manage initrc injection
     Initrc {
@@ -579,6 +591,14 @@ enum UmountOp {
 }
 
 #[derive(clap::Subcommand, Debug)]
+pub enum IoSchedOp {
+    /// 应用并固化调度器
+    Apply { scheduler: String },
+    /// 清除固化
+    Clear,
+}
+
+#[derive(clap::Subcommand, Debug)]
 enum Initrc {
     /// Regenerate preinit rc file and preinit dirs
     Refresh,
@@ -617,6 +637,11 @@ pub fn run() -> Result<()> {
     let result = match cli.command {
         Commands::AnyKernel3 { zip, slot } => anykernel3::flash(&zip, slot),
         Commands::Susfs(args) => crate::android::susfs::cli::run_main(args),
+        Commands::NoMount(args) => nomount::cli::run_main(args),
+        Commands::IoSched { op } => match op {
+            IoSchedOp::Apply { scheduler } => crate::android::iosched::apply_now(&scheduler),
+            IoSchedOp::Clear => crate::android::iosched::clear(),
+        },
         Commands::PostFsData => init_event::on_post_fs_data(),
         Commands::BootCompleted => {
             init_event::on_boot_completed();

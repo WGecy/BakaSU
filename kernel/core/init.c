@@ -38,6 +38,9 @@
 #include "infra/symbol_resolver.h"
 #include "preinit/preinit.h"
 #include "uapi/supercall.h"
+#ifdef KSU_NOMOUNT
+#include "nomount/nomount_api.h"
+#endif
 
 #ifdef CONFIG_ARM64
 #include "compat/apatch_conflict.h"
@@ -255,6 +258,11 @@ int __init kernelsu_init(void)
 
     ksu_setuid_hook_init();
     ksu_sucompat_init();
+#ifdef KSU_NOMOUNT
+    ret = ksu_nomount_init();
+    if (ret)
+        pr_warn("failed to init nomount: %d\n", ret);
+#endif
     if (ksu_late_loaded) {
         // This way are only happen when tracepoint+lkm
         // so we use ifdef MODULE there to avoid manual hook compile failed
@@ -341,6 +349,10 @@ void __exit kernelsu_exit(void)
     ksu_feature_exit();
     ksu_module_blacklist_exit();
 
+#ifdef KSU_NOMOUNT
+    ksu_nomount_exit();
+#endif
+
     put_cred(ksu_cred);
 }
 
@@ -356,10 +368,17 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("weishu");
 MODULE_DESCRIPTION("Android KernelSU");
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)
+// MODULE_IMPORT_NS only appeared in Linux 5.4; 5.0 - 5.3 would fail to build.
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
 MODULE_IMPORT_NS("VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver");
+#ifdef KSU_NOMOUNT
+MODULE_IMPORT_NS("ANDROID_GKI_VFS_EXPORT_ONLY");
+#endif
 #else
 MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
+#ifdef KSU_NOMOUNT
+MODULE_IMPORT_NS(ANDROID_GKI_VFS_EXPORT_ONLY);
+#endif
 #endif
 #endif
