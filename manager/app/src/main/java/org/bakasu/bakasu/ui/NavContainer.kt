@@ -91,11 +91,15 @@ import org.bakasu.bakasu.ui.screen.about.AboutScreen
 import org.bakasu.bakasu.ui.screen.about.OpenSourceLicenseScreen
 import org.bakasu.bakasu.ui.screen.kernelFlash.KernelFlashScreen
 import org.bakasu.bakasu.ui.screen.main.MainScreen
+import org.bakasu.bakasu.ui.screen.main.SettingsAppScreen
+import org.bakasu.bakasu.ui.screen.main.SettingsCoreScreen
+import org.bakasu.bakasu.ui.screen.main.SettingsToolsScreen
 import org.bakasu.bakasu.ui.screen.moduleRepo.AddRepositoryScreen
 import org.bakasu.bakasu.ui.screen.moduleRepo.ModuleRepoScreen
 import org.bakasu.bakasu.ui.screen.moduleRepo.OnlineModuleDetailScreen
 import org.bakasu.bakasu.ui.screen.susfs.SuSFSConfigScreen
 import org.bakasu.bakasu.ui.screen.themeSettings.ThemeSettingsScreen
+import org.bakasu.bakasu.ui.screen.toolbox.ToolboxScreen
 import org.bakasu.bakasu.ui.theme.BackgroundRenderState
 import org.bakasu.bakasu.ui.theme.LocalBackgroundRenderState
 import org.bakasu.bakasu.ui.theme.ThemeConfig
@@ -542,6 +546,50 @@ fun NavContainer(
                     useBlur = useBlur,
                 ) {
                     MainScreen(pagerInterceptionMode = settings.pagerInterceptionMode)
+                }
+            }
+            entry<Route.SettingsCore>(swipeDismiss = swipeBackDirection) {
+                ManagerNavEntry(
+                    interceptPredictiveBack = interceptPredictiveBack,
+                    onBack = onBack,
+                    themeConfig = themeConfig,
+                    backgroundRenderState = backgroundRenderState,
+                    useBlur = useBlur,
+                ) {
+                    SettingsCoreScreen()
+                }
+            }
+            entry<Route.SettingsApp>(swipeDismiss = swipeBackDirection) {
+                ManagerNavEntry(
+                    interceptPredictiveBack = interceptPredictiveBack,
+                    onBack = onBack,
+                    themeConfig = themeConfig,
+                    backgroundRenderState = backgroundRenderState,
+                    useBlur = useBlur,
+                ) {
+                    SettingsAppScreen()
+                }
+            }
+            entry<Route.SettingsTools>(swipeDismiss = swipeBackDirection) {
+                ManagerNavEntry(
+                    interceptPredictiveBack = interceptPredictiveBack,
+                    onBack = onBack,
+                    themeConfig = themeConfig,
+                    backgroundRenderState = backgroundRenderState,
+                    useBlur = useBlur,
+                ) {
+                    SettingsToolsScreen()
+                }
+            }
+            entry<Route.Toolbox>(swipeDismiss = swipeBackDirection) {
+                ManagerNavEntry(
+                    interceptPredictiveBack = interceptPredictiveBack,
+                    onBack = onBack,
+                    themeConfig = themeConfig,
+                    backgroundRenderState = backgroundRenderState,
+                    useBlur = useBlur,
+                ) {
+                    ToolboxScreen()
                 }
             }
             entry<Route.ThemeSettings>(swipeDismiss = swipeBackDirection) {

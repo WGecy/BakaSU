@@ -55,6 +55,7 @@ import androidx.compose.material.icons.twotone.SwapHoriz
 import androidx.compose.material.icons.twotone.Swipe
 import androidx.compose.material.icons.twotone.Translate
 import androidx.compose.material.icons.twotone.ViewCarousel
+import androidx.compose.material.icons.twotone.VisibilityOff
 import androidx.compose.material.icons.twotone.Wallpaper
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -737,6 +738,19 @@ private fun CustomizationSettings(
                 checked = moduleUiState.showMoreModuleInfo,
                 onCheckedChange = { enabled ->
                     moduleViewModel.dispatch(ModuleUiAction.SetShowMoreInfo(enabled))
+                },
+            )
+        }
+
+        item {
+            // 隐藏首页链接卡片 (了解更多 / 赞助)
+            SettingsSwitchWidget(
+                icon = Icons.TwoTone.VisibilityOff,
+                title = stringResource(R.string.hide_link_card),
+                description = stringResource(R.string.hide_link_card_summary),
+                checked = homeUiState.isHideLinkCard,
+                onCheckedChange = { enabled ->
+                    homeViewModel.dispatch(HomeUiAction.SetHideLinkCard(enabled))
                 },
             )
         }

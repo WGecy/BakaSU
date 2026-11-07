@@ -52,6 +52,22 @@ sealed interface Route :
 
     @Parcelize
     @Serializable
+    data object SettingsCore : Route
+
+    @Parcelize
+    @Serializable
+    data object SettingsApp : Route
+
+    @Parcelize
+    @Serializable
+    data object SettingsTools : Route
+
+    @Parcelize
+    @Serializable
+    data object Toolbox : Route
+
+    @Parcelize
+    @Serializable
     data class TemplateEditor(
         val templateId: String,
         val readOnly: Boolean,

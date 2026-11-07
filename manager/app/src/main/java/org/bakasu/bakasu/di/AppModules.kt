@@ -20,6 +20,7 @@ import org.bakasu.bakasu.data.download.DownloadRepository
 import org.bakasu.bakasu.data.file.ModuleFileRepository
 import org.bakasu.bakasu.data.flash.FlashRepository
 import org.bakasu.bakasu.data.kernel.KernelRepository
+import org.bakasu.bakasu.data.kernel.NomountRepository
 import org.bakasu.bakasu.data.kernel.UmountRepository
 import org.bakasu.bakasu.data.logging.BugreportRepository
 import org.bakasu.bakasu.data.logging.SulogRepository
@@ -60,6 +61,8 @@ import org.bakasu.bakasu.data.update.ManagerUpdateRepository
 import org.bakasu.bakasu.data.webui.WebUiRepository
 import org.bakasu.bakasu.domain.text.TextTransliterator
 import org.bakasu.bakasu.domain.usecase.AddModuleRepositoryUseCase
+import org.bakasu.bakasu.domain.usecase.AddNomountExclusionUseCase
+import org.bakasu.bakasu.domain.usecase.AddNomountRuleUseCase
 import org.bakasu.bakasu.domain.usecase.AddUmountPathUseCase
 import org.bakasu.bakasu.domain.usecase.ApplyLanguageUseCase
 import org.bakasu.bakasu.domain.usecase.BackupAllowlistUseCase
@@ -68,6 +71,7 @@ import org.bakasu.bakasu.domain.usecase.CheckFlashModuleMountUseCase
 import org.bakasu.bakasu.domain.usecase.CheckManagerUpdateUseCase
 import org.bakasu.bakasu.domain.usecase.CleanSulogUseCase
 import org.bakasu.bakasu.domain.usecase.ClearDynamicManagerUseCase
+import org.bakasu.bakasu.domain.usecase.ClearNomountRulesUseCase
 import org.bakasu.bakasu.domain.usecase.ConfigureSuLogUseCase
 import org.bakasu.bakasu.domain.usecase.ControlAppUseCase
 import org.bakasu.bakasu.domain.usecase.DeleteProfileTemplateUseCase
@@ -105,6 +109,7 @@ import org.bakasu.bakasu.domain.usecase.GetSuperUserAppGroupUseCase
 import org.bakasu.bakasu.domain.usecase.ImportAllowlistUseCase
 import org.bakasu.bakasu.domain.usecase.ImportProfileTemplatesUseCase
 import org.bakasu.bakasu.domain.usecase.InitializeApplicationUseCase
+import org.bakasu.bakasu.domain.usecase.InjectNomountModulesUseCase
 import org.bakasu.bakasu.domain.usecase.IsCatalogModuleCurrentUseCase
 import org.bakasu.bakasu.domain.usecase.IsLateLoadModeUseCase
 import org.bakasu.bakasu.domain.usecase.IsModuleUriAccessibleUseCase
@@ -113,6 +118,7 @@ import org.bakasu.bakasu.domain.usecase.IsSoftRebootPreferredUseCase
 import org.bakasu.bakasu.domain.usecase.IsSystemLanguageSettingsUseCase
 import org.bakasu.bakasu.domain.usecase.LaunchSystemLanguageSettingsUseCase
 import org.bakasu.bakasu.domain.usecase.LoadModuleIconUseCase
+import org.bakasu.bakasu.domain.usecase.LoadNomountModuleUseCase
 import org.bakasu.bakasu.domain.usecase.LoadSettingsPlatformUseCase
 import org.bakasu.bakasu.domain.usecase.ObserveAssetDownloadUseCase
 import org.bakasu.bakasu.domain.usecase.ObserveCatalogModulesUseCase
@@ -121,6 +127,7 @@ import org.bakasu.bakasu.domain.usecase.ObserveDynamicManagerStateUseCase
 import org.bakasu.bakasu.domain.usecase.ObserveInstalledModulesUseCase
 import org.bakasu.bakasu.domain.usecase.ObserveKernelFlashUseCase
 import org.bakasu.bakasu.domain.usecase.ObserveModuleCatalogRefreshingUseCase
+import org.bakasu.bakasu.domain.usecase.ObserveNomountStateUseCase
 import org.bakasu.bakasu.domain.usecase.ObserveProfileTemplateOfflineUseCase
 import org.bakasu.bakasu.domain.usecase.ObserveProfileTemplateRefreshingUseCase
 import org.bakasu.bakasu.domain.usecase.ObserveProfileTemplatesUseCase
@@ -135,12 +142,15 @@ import org.bakasu.bakasu.domain.usecase.RebootUseCase
 import org.bakasu.bakasu.domain.usecase.RefreshDynamicManagerUseCase
 import org.bakasu.bakasu.domain.usecase.RefreshInstalledModulesUseCase
 import org.bakasu.bakasu.domain.usecase.RefreshModuleCatalogUseCase
+import org.bakasu.bakasu.domain.usecase.RefreshNomountStateUseCase
 import org.bakasu.bakasu.domain.usecase.RefreshProfileTemplatesUseCase
 import org.bakasu.bakasu.domain.usecase.RefreshSulogUseCase
 import org.bakasu.bakasu.domain.usecase.RefreshSuperUsersUseCase
 import org.bakasu.bakasu.domain.usecase.RefreshUmountPathsUseCase
 import org.bakasu.bakasu.domain.usecase.ReleaseScriptUseCase
 import org.bakasu.bakasu.domain.usecase.RemoveModuleRepositoryUseCase
+import org.bakasu.bakasu.domain.usecase.RemoveNomountExclusionUseCase
+import org.bakasu.bakasu.domain.usecase.RemoveNomountRuleUseCase
 import org.bakasu.bakasu.domain.usecase.RemovePreferenceUseCase
 import org.bakasu.bakasu.domain.usecase.RemoveUmountPathUseCase
 import org.bakasu.bakasu.domain.usecase.RenameModuleRepositoryUseCase
@@ -157,6 +167,11 @@ import org.bakasu.bakasu.domain.usecase.SetKernelUmountEnabledUseCase
 import org.bakasu.bakasu.domain.usecase.SetManualDynamicManagerUseCase
 import org.bakasu.bakasu.domain.usecase.SetModuleEnabledUseCase
 import org.bakasu.bakasu.domain.usecase.SetModuleRemovedUseCase
+import org.bakasu.bakasu.domain.usecase.SetNomountEnabledUseCase
+import org.bakasu.bakasu.domain.usecase.SetNomountIsolatedUseCase
+import org.bakasu.bakasu.domain.usecase.SetNomountModuleDisabledUseCase
+import org.bakasu.bakasu.domain.usecase.SetNomountModuleSkipMountUseCase
+import org.bakasu.bakasu.domain.usecase.SetNomountSafeModeUseCase
 import org.bakasu.bakasu.domain.usecase.SetSelinuxHideEnabledUseCase
 import org.bakasu.bakasu.domain.usecase.SetShellSuAdbOnlyEnabledUseCase
 import org.bakasu.bakasu.domain.usecase.SetStringPreferenceUseCase
@@ -166,6 +181,7 @@ import org.bakasu.bakasu.domain.usecase.StartKernelFlashUseCase
 import org.bakasu.bakasu.domain.usecase.SuSFSConfigUseCase
 import org.bakasu.bakasu.domain.usecase.TakeModuleUriPermissionUseCase
 import org.bakasu.bakasu.domain.usecase.TransliterateTextUseCase
+import org.bakasu.bakasu.domain.usecase.UnloadNomountModuleUseCase
 import org.bakasu.bakasu.domain.usecase.UpdateAppearanceUseCase
 import org.bakasu.bakasu.domain.usecase.UpdateCachedModuleEnabledUseCase
 import org.bakasu.bakasu.domain.usecase.UpdatePlatformSettingUseCase
@@ -182,11 +198,13 @@ import org.bakasu.bakasu.ui.viewmodel.ExecuteModuleActionViewModel
 import org.bakasu.bakasu.ui.viewmodel.FlashViewModel
 import org.bakasu.bakasu.ui.viewmodel.HomeViewModel
 import org.bakasu.bakasu.ui.viewmodel.InstallViewModel
+import org.bakasu.bakasu.ui.viewmodel.IoSchedulerViewModel
 import org.bakasu.bakasu.ui.viewmodel.KernelFlashViewModel
 import org.bakasu.bakasu.ui.viewmodel.MainIntentViewModel
 import org.bakasu.bakasu.ui.viewmodel.ModuleDetailViewModel
 import org.bakasu.bakasu.ui.viewmodel.ModuleRepoViewModel
 import org.bakasu.bakasu.ui.viewmodel.ModuleViewModel
+import org.bakasu.bakasu.ui.viewmodel.NomountViewModel
 import org.bakasu.bakasu.ui.viewmodel.RepositorySourcesViewModel
 import org.bakasu.bakasu.ui.viewmodel.ScriptRunViewModel
 import org.bakasu.bakasu.ui.viewmodel.SettingsViewModel
@@ -198,6 +216,7 @@ import org.bakasu.bakasu.ui.viewmodel.TemplateViewModel
 import org.bakasu.bakasu.ui.viewmodel.UmountManagerScreenViewModel
 import org.bakasu.bakasu.ui.webui.MonetColorsProvider
 import org.koin.android.ext.koin.androidApplication
+import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModel
@@ -285,6 +304,7 @@ val repositoryModule = module {
     singleOf(::SulogRepository)
     singleOf(::BugreportRepository)
     singleOf(::UmountRepository)
+    single { NomountRepository(get(), androidContext()) }
     singleOf(::ModuleCatalogRepository)
     single { ModuleReleaseRepository(get(), get(applicationScopeQualifier)) }
     singleOf(::ModuleIconRepository)
@@ -406,6 +426,21 @@ val useCaseModule = module {
     factoryOf(::RefreshUmountPathsUseCase)
     factoryOf(::AddUmountPathUseCase)
     factoryOf(::RemoveUmountPathUseCase)
+    factoryOf(::ObserveNomountStateUseCase)
+    factoryOf(::RefreshNomountStateUseCase)
+    factoryOf(::SetNomountEnabledUseCase)
+    factoryOf(::SetNomountSafeModeUseCase)
+    factoryOf(::SetNomountIsolatedUseCase)
+    factoryOf(::InjectNomountModulesUseCase)
+    factoryOf(::ClearNomountRulesUseCase)
+    factoryOf(::LoadNomountModuleUseCase)
+    factoryOf(::UnloadNomountModuleUseCase)
+    factoryOf(::SetNomountModuleDisabledUseCase)
+    factoryOf(::SetNomountModuleSkipMountUseCase)
+    factoryOf(::AddNomountRuleUseCase)
+    factoryOf(::RemoveNomountRuleUseCase)
+    factoryOf(::AddNomountExclusionUseCase)
+    factoryOf(::RemoveNomountExclusionUseCase)
     factoryOf(::ObserveKernelFlashUseCase)
     factoryOf(::StartKernelFlashUseCase)
     factoryOf(::RemovePreferenceUseCase)
@@ -458,6 +493,8 @@ val viewModelModule = module {
     viewModelOf(::ModuleViewModel)
     viewModelOf(::SuperUserViewModel)
     viewModelOf(::SuSFSViewModel)
+    viewModelOf(::IoSchedulerViewModel)
+    viewModelOf(::NomountViewModel)
     viewModel { parameters -> ModuleRepoViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), parameters.getOrNull<String>()) }
     viewModel { parameters -> ModuleDetailViewModel(parameters[0], parameters[1], get(), get(), get(), get(), get(), get(), get()) }
     viewModelOf(::RepositorySourcesViewModel)

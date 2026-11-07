@@ -188,6 +188,10 @@ class ModuleRepository(
     }
 
     private fun getMetaModuleStatus(): MetaModuleStatus {
+        // NoMount 内置 (ksud 注入) 时, 元模块功能由内置实现替代 → 视为 ACTIVE
+        if (ksuCliRepository.isNoMountBuiltIn()) {
+            return MetaModuleStatus.ACTIVE
+        }
         val directory = "/data/adb/metamodule"
         return when {
             !SuFile.open("$directory/module.prop").exists() -> MetaModuleStatus.MISSING

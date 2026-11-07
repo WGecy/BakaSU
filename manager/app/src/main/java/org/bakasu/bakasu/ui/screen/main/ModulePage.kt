@@ -13,6 +13,9 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -1233,6 +1236,8 @@ fun ModuleItem(
     val scope = rememberCoroutineScope()
     var isEnabled by remember(module.dirId) { mutableStateOf(module.enabled) }
     var isChangingEnabled by remember(module.dirId) { mutableStateOf(false) }
+    // 点击卡片展开/收起操作按钮行
+    val expandTransition = remember(module.dirId) { MutableTransitionState(false) }
 
     LaunchedEffect(module.enabled) {
         isEnabled = module.enabled
@@ -1261,21 +1266,11 @@ fun ModuleItem(
 
         Column(
             modifier = Modifier
-                .run {
-                    if (module.hasActionScript || module.hasWebUi) {
-                        combinedClickable(
-                            onClick = {
-                                if (module.hasWebUi) {
-                                    onClick(module)
-                                }
-                            },
-                        )
-                    } else {
-                        this
-                    }
-                }
+                .combinedClickable(
+                    onClick = { expandTransition.targetState = !expandTransition.targetState },
+                )
                 .padding(horizontal = 16.dp)
-                .padding(top = 12.dp),
+                .padding(top = 12.dp, bottom = 12.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1432,155 +1427,172 @@ fun ModuleItem(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            HorizontalDivider(thickness = Dp.Hairline)
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            // 操作按钮行默认折叠, 点击卡片展开
+            AnimatedVisibility(
+                visibleState = expandTransition,
+                enter = fadeIn(spring(stiffness = Spring.StiffnessMediumLow)) + expandVertically(
+                    animationSpec = spring(
+                        dampingRatio = 0.8f,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                ),
+                exit = shrinkVertically(
+                    animationSpec = spring(
+                        dampingRatio = 0.8f,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                ) + fadeOut(spring(stiffness = Spring.StiffnessMediumLow)),
             ) {
-                if (module.hasActionScript) {
-                    Surface(
-                        modifier = Modifier
-                            .padding(vertical = 5.dp)
-                            .defaultMinSize(minWidth = 52.dp, minHeight = 32.dp)
-                            .clip(ButtonDefaults.filledTonalShape)
-                            .combinedClickable(
-                                onClick = {
-                                    navigator.push(Route.ExecuteModuleAction(module.dirId, false))
-                                    viewModel.dispatch(ModuleUiAction.MarkNeedRefresh)
-                                },
-                                onLongClick = {
-                                    onModuleAddShortcut(module, ShortcutType.Action)
-                                },
-                            ),
-                        color =
-                            if (!module.remove && isEnabled) {
-                                ButtonDefaults.filledTonalButtonColors().containerColor
-                            } else {
-                                ButtonDefaults.filledTonalButtonColors().disabledContainerColor
-                            },
-                        contentColor = if (!module.remove && isEnabled) {
-                            ButtonDefaults.filledTonalButtonColors().contentColor
-                        } else {
-                            ButtonDefaults.filledTonalButtonColors().disabledContentColor
-                        },
+                Column {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider(thickness = Dp.Hairline)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .padding(12.dp, 7.dp, 12.dp, 7.dp),
-                            imageVector = Icons.TwoTone.PlayArrow,
-                            contentDescription = null,
-                        )
-                    }
-                }
-
-                if (module.hasWebUi) {
-                    Surface(
-                        modifier = Modifier
-                            .padding(vertical = 5.dp)
-                            .defaultMinSize(minWidth = 52.dp, minHeight = 32.dp)
-                            .clip(ButtonDefaults.filledTonalShape)
-                            .combinedClickable(
-                                onClick = { onClick(module) },
-                                onLongClick = {
-                                    onModuleAddShortcut(module, ShortcutType.WebUI)
+                        if (module.hasActionScript) {
+                            Surface(
+                                modifier = Modifier
+                                    .padding(vertical = 5.dp)
+                                    .defaultMinSize(minWidth = 52.dp, minHeight = 32.dp)
+                                    .clip(ButtonDefaults.filledTonalShape)
+                                    .combinedClickable(
+                                        onClick = {
+                                            navigator.push(Route.ExecuteModuleAction(module.dirId, false))
+                                            viewModel.dispatch(ModuleUiAction.MarkNeedRefresh)
+                                        },
+                                        onLongClick = {
+                                            onModuleAddShortcut(module, ShortcutType.Action)
+                                        },
+                                    ),
+                                color =
+                                    if (!module.remove && isEnabled) {
+                                        ButtonDefaults.filledTonalButtonColors().containerColor
+                                    } else {
+                                        ButtonDefaults.filledTonalButtonColors().disabledContainerColor
+                                    },
+                                contentColor = if (!module.remove && isEnabled) {
+                                    ButtonDefaults.filledTonalButtonColors().contentColor
+                                } else {
+                                    ButtonDefaults.filledTonalButtonColors().disabledContentColor
                                 },
-                            ),
-                        color =
-                            if (!module.remove && isEnabled) {
-                                ButtonDefaults.filledTonalButtonColors().containerColor
-                            } else {
-                                ButtonDefaults.filledTonalButtonColors().disabledContainerColor
-                            },
-                        contentColor = if (!module.remove && isEnabled) {
-                            ButtonDefaults.filledTonalButtonColors().contentColor
-                        } else {
-                            ButtonDefaults.filledTonalButtonColors().disabledContentColor
-                        },
-                    ) {
-                        Icon(
+                            ) {
+                                Icon(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .padding(12.dp, 7.dp, 12.dp, 7.dp),
+                                    imageVector = Icons.TwoTone.PlayArrow,
+                                    contentDescription = null,
+                                )
+                            }
+                        }
+
+                        if (module.hasWebUi) {
+                            Surface(
+                                modifier = Modifier
+                                    .padding(vertical = 5.dp)
+                                    .defaultMinSize(minWidth = 52.dp, minHeight = 32.dp)
+                                    .clip(ButtonDefaults.filledTonalShape)
+                                    .combinedClickable(
+                                        onClick = { onClick(module) },
+                                        onLongClick = {
+                                            onModuleAddShortcut(module, ShortcutType.WebUI)
+                                        },
+                                    ),
+                                color =
+                                    if (!module.remove && isEnabled) {
+                                        ButtonDefaults.filledTonalButtonColors().containerColor
+                                    } else {
+                                        ButtonDefaults.filledTonalButtonColors().disabledContainerColor
+                                    },
+                                contentColor = if (!module.remove && isEnabled) {
+                                    ButtonDefaults.filledTonalButtonColors().contentColor
+                                } else {
+                                    ButtonDefaults.filledTonalButtonColors().disabledContentColor
+                                },
+                            ) {
+                                Icon(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .padding(12.dp, 7.dp, 12.dp, 7.dp),
+                                    imageVector = Icons.AutoMirrored.TwoTone.Wysiwyg,
+                                    contentDescription = null,
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.weight(1f, true))
+
+                        if (updateUrl.isNotEmpty()) {
+                            Surface(
+                                modifier = Modifier
+                                    .padding(vertical = 5.dp)
+                                    .defaultMinSize(minWidth = 52.dp, minHeight = 32.dp)
+                                    .clip(ButtonDefaults.filledTonalShape)
+                                    .clickable {
+                                        onUpdate(module)
+                                    },
+                                color =
+                                    if (!module.remove) {
+                                        ButtonDefaults.filledTonalButtonColors().containerColor
+                                    } else {
+                                        ButtonDefaults.filledTonalButtonColors().disabledContainerColor
+                                    },
+                                contentColor = if (!module.remove) {
+                                    ButtonDefaults.filledTonalButtonColors().contentColor
+                                } else {
+                                    ButtonDefaults.filledTonalButtonColors().disabledContentColor
+                                },
+                            ) {
+                                Icon(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .padding(12.dp, 7.dp, 12.dp, 7.dp),
+                                    imageVector = Icons.TwoTone.Download,
+                                    contentDescription = null,
+                                )
+                            }
+                        }
+
+                        Surface(
                             modifier = Modifier
-                                .size(20.dp)
-                                .padding(12.dp, 7.dp, 12.dp, 7.dp),
-                            imageVector = Icons.AutoMirrored.TwoTone.Wysiwyg,
-                            contentDescription = null,
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.weight(1f, true))
-
-                if (updateUrl.isNotEmpty()) {
-                    Surface(
-                        modifier = Modifier
-                            .padding(vertical = 5.dp)
-                            .defaultMinSize(minWidth = 52.dp, minHeight = 32.dp)
-                            .clip(ButtonDefaults.filledTonalShape)
-                            .clickable {
-                                onUpdate(module)
+                                .padding(vertical = 5.dp)
+                                .defaultMinSize(minWidth = 52.dp, minHeight = 32.dp)
+                                .clip(ButtonDefaults.filledTonalShape)
+                                .clickable {
+                                    onUninstallClicked(module)
+                                },
+                            color =
+                                if (!module.remove) {
+                                    ButtonDefaults.filledTonalButtonColors().containerColor
+                                } else {
+                                    ButtonDefaults.filledTonalButtonColors().disabledContainerColor
+                                },
+                            contentColor = if (!module.remove) {
+                                ButtonDefaults.filledTonalButtonColors().contentColor
+                            } else {
+                                ButtonDefaults.filledTonalButtonColors().disabledContentColor
                             },
-                        color =
+                        ) {
                             if (!module.remove) {
-                                ButtonDefaults.filledTonalButtonColors().containerColor
+                                Icon(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .padding(12.dp, 7.dp, 12.dp, 7.dp),
+                                    imageVector = Icons.TwoTone.Delete,
+                                    contentDescription = null,
+                                )
                             } else {
-                                ButtonDefaults.filledTonalButtonColors().disabledContainerColor
-                            },
-                        contentColor = if (!module.remove) {
-                            ButtonDefaults.filledTonalButtonColors().contentColor
-                        } else {
-                            ButtonDefaults.filledTonalButtonColors().disabledContentColor
-                        },
-                    ) {
-                        Icon(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .padding(12.dp, 7.dp, 12.dp, 7.dp),
-                            imageVector = Icons.TwoTone.Download,
-                            contentDescription = null,
-                        )
-                    }
-                }
-
-                Surface(
-                    modifier = Modifier
-                        .padding(vertical = 5.dp)
-                        .defaultMinSize(minWidth = 52.dp, minHeight = 32.dp)
-                        .clip(ButtonDefaults.filledTonalShape)
-                        .clickable {
-                            onUninstallClicked(module)
-                        },
-                    color =
-                        if (!module.remove) {
-                            ButtonDefaults.filledTonalButtonColors().containerColor
-                        } else {
-                            ButtonDefaults.filledTonalButtonColors().disabledContainerColor
-                        },
-                    contentColor = if (!module.remove) {
-                        ButtonDefaults.filledTonalButtonColors().contentColor
-                    } else {
-                        ButtonDefaults.filledTonalButtonColors().disabledContentColor
-                    },
-                ) {
-                    if (!module.remove) {
-                        Icon(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .padding(12.dp, 7.dp, 12.dp, 7.dp),
-                            imageVector = Icons.TwoTone.Delete,
-                            contentDescription = null,
-                        )
-                    } else {
-                        Icon(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .rotate(180f)
-                                .padding(12.dp, 7.dp, 12.dp, 7.dp),
-                            imageVector = Icons.TwoTone.Refresh,
-                            contentDescription = null,
-                        )
+                                Icon(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .rotate(180f)
+                                        .padding(12.dp, 7.dp, 12.dp, 7.dp),
+                                    imageVector = Icons.TwoTone.Refresh,
+                                    contentDescription = null,
+                                )
+                            }
+                        }
                     }
                 }
             }

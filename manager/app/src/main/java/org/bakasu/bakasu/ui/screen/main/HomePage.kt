@@ -374,7 +374,7 @@ fun HomePage(
             }
 
             // 链接卡片
-            if (!uiState.isSimpleMode) {
+            if (!uiState.isSimpleMode && !uiState.isHideLinkCard) {
                 DonateCard(uiState.showHomeCardIcons)
                 LearnMoreCard(uiState.showHomeCardIcons)
             }

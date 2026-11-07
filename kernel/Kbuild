@@ -43,6 +43,25 @@ ifdef CONFIG_ARM64
 kernelsu-objs += compat/apatch_conflict.o
 endif
 
+# NoMount: upstream ships it as an LKM validated on GKI 5.10 - 6.12; BakaSU also
+# builds it in-tree over Linux 4.9 - 6.17, 4.9 being the oldest tree with every
+# VFS helper it needs.  Outside that range, or with CONFIG_KSU_DISABLE_NOMOUNT,
+# nomount.o is dropped
+# and init.c compiles the calls out (KSU_NOMOUNT stays undefined).
+NOMOUNT_KVER := $(shell echo $$(( $(VERSION) * 1000 + $(PATCHLEVEL) )))
+ifeq ($(shell test $(NOMOUNT_KVER) -ge 4009 -a $(NOMOUNT_KVER) -lt 6018 && echo yes),yes)
+ifndef CONFIG_KSU_DISABLE_NOMOUNT
+ccflags-y += -DKSU_NOMOUNT
+kernelsu-objs += nomount/nomount.o
+# nomount needs C99 (mid-block declarations, RCU guard) while trees older than
+# 5.15 default to -std=gnu89.  kbuild keys CFLAGS_<obj> on the path relative to
+# $(obj), so the subdirectory has to be part of the name.
+CFLAGS_nomount/nomount.o += -std=gnu11
+endif
+else
+$(info -- NoMount: kernel $(VERSION).$(PATCHLEVEL) is outside 4.9 - 6.17, skipping)
+endif
+
 ccflags-y += -Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-missing-prototypes
 ccflags-y += $(call cc-disable-warning, int-conversion)
 ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-unused-variable -Wno-missing-braces
@@ -51,6 +70,18 @@ ccflags-y += -Wno-int-to-pointer-cast -Wno-declaration-after-statement
 ccflags-y += -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include
 ccflags-y += -I$(srctree)/$(src) -I$(srctree)/$(src)/include
 ccflags-y += -I$(src) -I$(src)/include
+
+# NoMount: struct xattr_handler differs between trees in ways no version guard
+# captures (GKI 5.4/5.10 add "int flags" to the get callback, mainline 5.2 -
+# 5.11 do not; some vendor trees add a second "__get"), so probe the header.
+NM_XATTR_HDR := $(srctree)/include/linux/xattr.h
+NM_XATTR_GET_DECL := $(shell awk '/\(\*get\)/ { f = 1 } f { print } f && /;/ { exit }' $(NM_XATTR_HDR) 2>/dev/null)
+ifneq ($(findstring int flags,$(NM_XATTR_GET_DECL)),)
+ccflags-y += -DNM_XATTR_GET_HAS_FLAGS
+endif
+ifeq ($(shell grep -qE '\([*][[:space:]]*__get\)' $(NM_XATTR_HDR) 2>/dev/null && echo 1 || echo 0),1)
+ccflags-y += -DNM_HAS_XATTR__GET
+endif
 
 obj-$(CONFIG_KSU) += kernelsu.o
 

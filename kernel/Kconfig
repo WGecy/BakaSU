@@ -3,6 +3,7 @@ menu "KernelSU"
 config KSU
 	  tristate "KernelSU function support"
       select KALLSYMS
+      select KEYS
 	  default y
 	  help
 		Enable kernel-level root privileges on Android System.
@@ -61,6 +62,15 @@ config KSU_DISABLE_POLICY
 	  Disable per-app root/non-root profile customization.
 	  Escalation will always use the default full root profile, and
 	  non-root handling will follow the global umount policy only.
+
+config KSU_DISABLE_NOMOUNT
+	bool "Disable NoMount path redirection"
+	depends on KSU
+	default n
+	help
+	  Disable the built-in NoMount VFS path redirection subsystem; the
+	  manager then reports the feature as unsupported.  NoMount builds on
+	  Linux 4.9 - 6.17, outside that range kernel/Kbuild skips it anyway.
 
 config KSU_X86_PATCH_SYSCALL_DISPATCHER
 	bool "Dynamically patch x64's hardened syscall dispatcher to support syscall hooks"

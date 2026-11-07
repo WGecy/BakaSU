@@ -21,6 +21,7 @@
 4. 支持 non-GKI 与 GKI 1.0。
 5. 可调整管理器外观，可自定义 susfs 配置。
 6. 多管理器支持，默认支持使用 [官方KernelSU](https://github.com/tiann/KernelSU)/[KOWSU](https://github.com/KOWX712/KernelSU) 作为管理器与 BakaSU 内核共同工作
+7. 内核级 NoMount 管理器（移植自 [maxsteeel/nomount](https://github.com/maxsteeel/nomount)），可在设置页“附加功能”中使用
 
 ## 兼容状态
 
@@ -31,6 +32,8 @@
 - 目前支持架构 : `arm64-v8a`、`armeabi-v7a`、`x86_64`。
 
 - `Tracepoint Syscall Redirect Hook` 只支持在 GKI2 内核(5.10+) 工作
+
+- [NoMount](https://github.com/maxsteeel/nomount) 上游**仅**在 GKI 5.10 - 6.12 上验证。BakaSU 额外把同一个驱动在 Linux 4.9 及以上直接编进内核（built-in），因此旧的非 GKI 内核自己编译内核后同样拥有完整功能；低于 4.9 与 6.18 及以上内核不参与编译，工具箱页面会提示暂不支持。
 
 ## Hook 模式
 - `Tracepoint Syscall Redirect hook` 默认模式, 来自于 [上游](https://github.com/tiann/KernelSU), 但是只支持 GKI2 内核且为 `arm64-v8a` 或 `x86_64` 架构
