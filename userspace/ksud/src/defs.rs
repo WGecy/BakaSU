@@ -86,6 +86,14 @@ mod android {
     pub const DYNAMIC_MANAGER: &str = concatcp!(WORKING_DIR, ".dynamic_manager");
     pub const SUSFS_CONFIG: &str = concatcp!(WORKING_DIR, ".susfs.json");
 
+    // YukiZygisk
+    /// 守护进程运行期目录 (catalog / recovery / yzconfig.json)
+    pub const YUKIZYGISK_DIR: &str = concatcp!(WORKING_DIR, "yukizygisk/");
+    /// 内核 YZ_RUNTIME_DIR：注入用的 payload 必须落在这里
+    pub const YUKIZYGISK_LIB_DIR: &str = concatcp!(LIBRARY_DIR, "yukizygisk/");
+    pub const YUKIZYGISK_CONFIG_PATH: &str = concatcp!(YUKIZYGISK_DIR, "yzconfig.json");
+    pub const YUKIZYGISK_RECOVERY_DIR: &str = concatcp!(YUKIZYGISK_DIR, "recovery/");
+
     #[derive(Serialize)]
     pub struct MountInfo {
         pub path: String,

@@ -11,6 +11,7 @@ use crate::{
         module::{self, module_config, regenerate_preinit},
         nomount::{self, cli::NoMountArgs},
         profile, sepolicy, su, sulog, susfs, uapi, umount_config, utils,
+        zygisk::{self, cli::ZygiskArgs},
     },
     anykernel3::{self, Slot},
     apk_sign, assets,
@@ -173,6 +174,10 @@ enum Commands {
     /// NoMount: VFS 路径重定向管理
     #[command(name = "nomount")]
     NoMount(NoMountArgs),
+
+    /// YukiZygisk: 内核级 Zygisk 管理
+    #[command(name = "zygisk")]
+    Zygisk(ZygiskArgs),
 
     /// IO 调度器固化 (apply/clear)
     #[command(name = "iosched")]
@@ -638,6 +643,7 @@ pub fn run() -> Result<()> {
         Commands::AnyKernel3 { zip, slot } => anykernel3::flash(&zip, slot),
         Commands::Susfs(args) => crate::android::susfs::cli::run_main(args),
         Commands::NoMount(args) => nomount::cli::run_main(args),
+        Commands::Zygisk(args) => zygisk::cli::run_main(args),
         Commands::IoSched { op } => match op {
             IoSchedOp::Apply { scheduler } => crate::android::iosched::apply_now(&scheduler),
             IoSchedOp::Clear => crate::android::iosched::clear(),

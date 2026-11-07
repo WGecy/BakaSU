@@ -72,6 +72,25 @@ config KSU_DISABLE_NOMOUNT
 	  manager then reports the feature as unsupported.  NoMount builds on
 	  Linux 4.9 - 6.12, outside that range kernel/Kbuild skips it anyway.
 
+config KSU_YUKIZYGISK
+	bool "Enable built-in YukiZygisk (kernel-level Zygisk)"
+	depends on KSU && ARM64
+	default n
+	help
+	  Build the YukiZygisk kernel component in-tree: it injects the zygisk
+	  loader into zygote and every app specialisation process from inside
+	  the kernel, so no Magisk/KernelSU userspace module has to hook
+	  zygote.  It works both as an LKM (CONFIG_KSU=m) and built into the
+	  kernel image (CONFIG_KSU=y); the userspace payload (libyloader64.so,
+	  libzygisk64.so, libyukizncore64.so and zygiskd) is staged under
+	  /data/adb/ksu/lib/yukizygisk/ by ksud.
+
+	  The feature can also be toggled at runtime through
+	  KSU_FEATURE_YUKIZYGISK; this option only controls whether the code
+	  is compiled in.
+
+	  Say N unless you are porting this to an ARM64 GKI device.
+
 config KSU_X86_PATCH_SYSCALL_DISPATCHER
 	bool "Dynamically patch x64's hardened syscall dispatcher to support syscall hooks"
 	depends on KSU && X86_64

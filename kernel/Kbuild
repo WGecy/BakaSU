@@ -60,6 +60,23 @@ else
 $(info -- NoMount: kernel $(VERSION).$(PATCHLEVEL) is outside 4.9 - 6.18, skipping)
 endif
 
+# YukiZygisk: YukiSU's in-tree kernel-level Zygisk.  The feature leans on the
+# SELinux policy helpers exported by selinux/rules.c (ksu_file_load_policy_*),
+# which only exist for 5.10+ policy handling, so the port keeps the same floor.
+YUKIZYGISK_KVER := $(shell echo $(( $(VERSION) * 1000 + $(PATCHLEVEL) )))
+ifeq ($(CONFIG_KSU_YUKIZYGISK),y)
+ifeq ($(shell test $(YUKIZYGISK_KVER) -ge 5010 -a $(YUKIZYGISK_KVER) -lt 6019 && echo yes),yes)
+ifeq ($(CONFIG_ARM64),y)
+kernelsu-objs += infra/hook_lifetime.o
+include $(src)/feature/yukizygisk/Kbuild
+else
+$(info -- YukiZygisk: only ARM64 is supported, skipping)
+endif
+else
+$(info -- YukiZygisk: kernel $(VERSION).$(PATCHLEVEL) is outside 5.10 - 6.18, skipping)
+endif
+endif
+
 ccflags-y += -Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-missing-prototypes
 ccflags-y += $(call cc-disable-warning, int-conversion)
 ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-unused-variable -Wno-missing-braces

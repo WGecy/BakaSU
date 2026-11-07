@@ -47,6 +47,9 @@ class KsuCliRepository(context: Context) {
          */
         const val NOMOUNT_TIMEOUT_SECONDS = 180L
 
+        /** YukiZygisk 专用 shell 超时 (秒): 首次 enable 需落盘 payload 并让内核重扫模块. */
+        const val ZYGISK_TIMEOUT_SECONDS = 120L
+
         /**
          * 被内核判定为"官方管理器签名"的指纹集合.
          * 必须与 kernel/manager/manager_sign.h + kernel/manager/apk_sign.c 的白名单保持一致;
@@ -266,6 +269,58 @@ class KsuCliRepository(context: Context) {
             }
         }
     }
+
+    /**
+     * 一次性长超时 root shell, 供内置 YukiZygisk 的命令使用.
+     *
+     * enable / reload 会触发 ksud 落盘 payload 并向内核重扫模块, 首次可能超过默认 15s.
+     */
+    private fun <T> withZygiskShell(block: Shell.() -> T): T {
+        val shell = try {
+            createRootShell(globalMnt = false, timeoutSeconds = ZYGISK_TIMEOUT_SECONDS)
+        } catch (e: Throwable) {
+            Log.w(TAG, "zygisk shell create failed, fallback to cached shell", e)
+            return getRootShell().block()
+        }
+        return shell.use(block)
+    }
+
+    /**
+     * 在长超时 zygisk shell 中执行 `ksud zygisk <args>`.
+     *
+     * 失败时以 stderr (或 stdout) 构造异常, 便于上层直接展示原因.
+     */
+    suspend fun execZygisk(args: String): Result<String> = withContext(Dispatchers.IO) {
+        withZygiskShell {
+            val command = "${getKsuDaemonPath()} zygisk $args"
+            val result = newJob().add(command).to(ArrayList<String>(), null).exec()
+            val stdout = result.out.joinToString("\n").trim()
+            if (result.isSuccess) {
+                Result.success(stdout)
+            } else {
+                val stderr = result.err.joinToString("\n").trim()
+                Result.failure(
+                    IllegalStateException(
+                        stderr.ifBlank { stdout }.ifBlank { "zygisk $args failed" },
+                    ),
+                )
+            }
+        }
+    }
+
+    /**
+     * 内置 YukiZygisk 是否已启用 (内核支持且 feature 已打开).
+     *
+     * `zygisk status` 会同时给出内核侧 generation 与 enabled, 一次 root 往返即可判定.
+     */
+    fun isYukizygiskBuiltIn(): Boolean = runCatching {
+        val status = exec("${getKsuDaemonPath()} zygisk status").orEmpty()
+        val enabled = status.lineSequence()
+            .firstOrNull { it.startsWith("Enabled:") }
+            ?.substringAfter("Enabled:")
+            ?.trim()
+        enabled == "true"
+    }.getOrDefault(false)
 
     /** 创建/删除模块的 skip_mount 标记, 供内置挂载系统管理器使用. */
     suspend fun setModuleSkipMount(moduleId: String, skip: Boolean): Boolean = withContext(Dispatchers.IO) {
@@ -789,6 +844,12 @@ class KsuCliRepository(context: Context) {
     }
 
     fun getZygiskImplement(): String {
+        // 内置 YukiZygisk (内核侧实现 + ksud 注入) 优先于任何外部 zygisk 模块
+        if (isYukizygiskBuiltIn()) {
+            Log.i(TAG, "Zygisk implement: YukiZygisk (built-in)")
+            return "YukiZygisk"
+        }
+
         val zygiskModuleIds = listOf(
             "zygisksu",
             "rezygisk",

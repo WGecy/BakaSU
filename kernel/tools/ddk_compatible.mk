@@ -22,6 +22,11 @@ ifeq ($(CONFIG_KSU_X86_PATCH_SYSCALL_DISPATCHER),y)
 ccflags-y += -DCONFIG_KSU_X86_PATCH_SYSCALL_DISPATCHER=1
 endif
 
+# ddk passes CONFIG_* through -e, so mirror the in-tree autoconf define here.
+ifeq ($(CONFIG_KSU_YUKIZYGISK),y)
+ccflags-y += -DCONFIG_KSU_YUKIZYGISK
+endif
+
 # ddk are only support Tracepoint Syscall Redirect hook
 ifeq ($(CONFIG_KSU_TRACEPOINT_HOOK),y)
 ccflags-y += -DCONFIG_KSU_TRACEPOINT_HOOK

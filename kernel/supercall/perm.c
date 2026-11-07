@@ -32,3 +32,8 @@ bool allowed_for_su(void)
 
     return is_allowed;
 }
+
+bool injected_app(void)
+{
+    return is_appuid(ksu_get_uid_t(current_uid()));
+}

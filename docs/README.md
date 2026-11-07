@@ -22,6 +22,7 @@ A [`tiann/KernelSU`](https://github.com/tiann/KernelSU)'s downstream, added some
 5. Tweaks to the manager theme and the built-in susfs management tool.
 6. Multi manager support, for default [Official KernelSU](https://github.com/tiann/KernelSU)/[KOWSU](https://github.com/KOWX712/KernelSU) is supported work as manager with BakaSU's kernel
 7. Kernel-level NoMount manager (ported from [maxsteeel/nomount](https://github.com/maxsteeel/nomount)), available from the Toolbox entry in Settings
+8. Kernel-level Zygisk (ported from [Rouyashiki/YukiZygisk](https://github.com/Rouyashiki/YukiZygisk)) built into the kernel itself: no external KernelSU Zygisk module is needed, and it is managed from the Toolbox entry in Settings
 
 ## Compatibility Status
 
@@ -36,6 +37,8 @@ A [`tiann/KernelSU`](https://github.com/tiann/KernelSU)'s downstream, added some
 - `Tracepoint Syscall Redirect hook` is only support with GKI2(5.10+) kernel
 
 - [NoMount](https://github.com/maxsteeel/nomount) is validated by upstream **ONLY** on GKI 5.10 - 6.12. BakaSU also links the same driver directly into the kernel (built-in) on Linux 4.9 and newer, so old non-GKI kernels get the full feature set as long as the kernel is built manually. Kernels older than 4.9 and Linux 6.18+ are compiled without it, and the toolbox page reports the feature as unsupported there.
+
+- [YukiZygisk](https://github.com/Rouyashiki/YukiZygisk) is upstream **only** available as a standalone external module, and only for ARM64. BakaSU links the same driver into the kernel (`CONFIG_KSU_YUKIZYGISK`) so it works both as a built-in kernel and as an LKM, and stages the userspace payload (`libzygisk`, `libyukizncore`, `libyloader` and the `zygiskd` daemon) through `ksud` on boot. It is built only for ARM64, from Linux 5.10 to 6.18; outside that range the driver is skipped at build time and the toolbox page reports the feature as unsupported.
 
 ## Hook Mode
 - `Tracepoint Syscall Redirect hook` The default hook mode, from [upstream](https://github.com/tiann/KernelSU), but its only support GKI2 kernel with `arm64-v8a` or `x86_64` ABI

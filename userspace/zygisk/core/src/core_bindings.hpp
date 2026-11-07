@@ -1,0 +1,28 @@
+#pragma once
+
+#include <cstdint>
+#include <link.h>
+
+bool core_private_tsd_used() noexcept;
+// Freeze other threads' key operations; the fork caller may run atfork
+// handlers.
+// Other threads' create/delete fail with EAGAIN/EBUSY until completion.
+bool core_prepare_fork() noexcept;
+void core_after_fork_parent() noexcept;
+void core_after_fork_child() noexcept;
+// Requires other participants to have exited and no active exception.
+// Drains current-thread values, without deleting keys or proving quiescence.
+int core_drain_current_thread_tsd() noexcept;
+extern "C" int core_system_iterate_phdr(int (*)(dl_phdr_info *, size_t, void *),
+                                        void *);
+
+using CoreUnmapFunction = int (*)(void *, size_t);
+// Validate the Core/SDK finalizer sequence and retain the image through
+// termination.
+bool core_prepare_runtime_retirement(uintptr_t base, size_t span) noexcept;
+bool core_runtime_profile_ready(uintptr_t base, size_t span) noexcept;
+CoreUnmapFunction core_retirement_unmap() noexcept;
+int core_finish_runtime_retirement() noexcept;
+bool core_runtime_closed() noexcept;
+extern "C" bool zygisk_adopt_anonymous_image(uintptr_t base, size_t span,
+                                             void *loader);

@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Rouyashiki <https://rouyashiki.org>
+
+@PACKAGE_INIT@
+
+# The package has no components; refuse a request for any rather than report it found.
+if(YukiLinker_FIND_COMPONENTS)
+  set(YukiLinker_FOUND FALSE)
+  set(YukiLinker_NOT_FOUND_MESSAGE
+    "YukiLinker has no components (requested: ${YukiLinker_FIND_COMPONENTS})")
+  return()
+endif()
+
+# Each ABI's install writes its targets under its own directory; take the consumer's. The install
+# keys it by CMAKE_ANDROID_ARCH_ABI; ANDROID_ABI is the NDK toolchain's older name for it.
+if(CMAKE_ANDROID_ARCH_ABI)
+  set(_yukilinker_abi "${CMAKE_ANDROID_ARCH_ABI}")
+else()
+  set(_yukilinker_abi "${ANDROID_ABI}")
+endif()
+if(NOT _yukilinker_abi)
+  set(YukiLinker_FOUND FALSE)
+  set(YukiLinker_NOT_FOUND_MESSAGE
+    "YukiLinker needs an Android toolchain (CMAKE_ANDROID_ARCH_ABI and ANDROID_ABI are empty)")
+  unset(_yukilinker_abi)
+  return()
+endif()
+if(NOT EXISTS "${CMAKE_CURRENT_LIST_DIR}/${_yukilinker_abi}/YukiLinkerTargets.cmake")
+  set(YukiLinker_FOUND FALSE)
+  set(YukiLinker_NOT_FOUND_MESSAGE "YukiLinker is not installed for ${_yukilinker_abi}")
+  unset(_yukilinker_abi)
+  return()
+endif()
+include("${CMAKE_CURRENT_LIST_DIR}/${_yukilinker_abi}/YukiLinkerTargets.cmake")
+unset(_yukilinker_abi)
+
+# install(EXPORT) names imported targets after the raw target, so the exported
+# set carries YukiLinker::yukilinker_*. The documented names in this package are
+# the short ones, so re-expose them here.
+foreach(_yukilinker_target headers runtime bootstrap)
+  if(TARGET YukiLinker::yukilinker_${_yukilinker_target})
+    if(NOT TARGET YukiLinker::${_yukilinker_target})
+      add_library(YukiLinker::${_yukilinker_target} ALIAS
+        YukiLinker::yukilinker_${_yukilinker_target})
+    endif()
+  endif()
+endforeach()
+unset(_yukilinker_target)
+
+check_required_components(YukiLinker)

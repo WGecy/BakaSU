@@ -23,6 +23,9 @@
 #include "hook/syscall_event_bridge.h"
 #include "feature/adb_root.h"
 #include "preinit/preinit.h"
+#ifdef CONFIG_KSU_YUKIZYGISK
+#include "feature/yukizygisk/api.h"
+#endif
 
 #include "compat/kernel_compat.h"
 
@@ -96,6 +99,14 @@ static long __nocfi ksu_hook_execve_common(int orig_nr, const struct pt_regs *re
             ksu_execve_hook_ksud(regs);
         }
     }
+
+#ifdef CONFIG_KSU_YUKIZYGISK
+    // YukiZygisk watches every zygote/app_process exec to arm its injector.
+    if (execveat)
+        ksu_yukizygisk_observe_execveat(regs);
+    else
+        ksu_yukizygisk_observe_execve(regs);
+#endif
 
     if (unlikely(current->pid == 1) && (!execveat || !(PT_REGS_NATIVE_PARM5(regs) & AT_EMPTY_PATH)) &&
         ksu_preinit_handle_execve_tracepoint(filename_user, argv_user, orig_nr, (struct pt_regs *)regs, &ret))

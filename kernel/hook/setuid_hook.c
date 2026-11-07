@@ -32,6 +32,9 @@
 #include <linux/workqueue.h>
 #endif
 #include "compat/syscall_no.h"
+#ifdef CONFIG_KSU_YUKIZYGISK
+#include "feature/yukizygisk/api.h"
+#endif
 
 static inline void ksu_set_file_immutable(const char *path_name, bool immutable)
 {
@@ -184,6 +187,10 @@ int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
 #ifdef CONFIG_KSU_MANUAL_HOOK_AUTO_SETUID_HOOK
     return 0; // dummy hook here
 #else
+#ifdef CONFIG_KSU_YUKIZYGISK
+    // Track the zygote fork -> app specialisation transition.
+    ksu_yukizygisk_on_setresuid(ksu_get_uid_t(current_uid()), ruid);
+#endif
     // we rely on the fact that zygote always call setresuid(3) with same uids
     return ksu_handle_setuid(ruid, ksu_get_uid_t(current_uid()));
 #endif

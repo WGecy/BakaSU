@@ -142,7 +142,7 @@ fn init_driver_fd() -> Option<RawFd> {
 }
 
 // ioctl wrapper using libc
-fn ksuctl<T>(request: u32, arg: *mut T) -> Result<i32> {
+pub(crate) fn ksuctl<T>(request: u32, arg: *mut T) -> Result<i32> {
     let fd = *DRIVER_FD.get_or_init(|| init_driver_fd().unwrap_or(-1));
     if fd < 0 {
         bail!("could not retrieve kernelsu driver fd")

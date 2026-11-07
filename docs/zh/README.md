@@ -22,6 +22,7 @@
 5. 可调整管理器外观，可自定义 susfs 配置。
 6. 多管理器支持，默认支持使用 [官方KernelSU](https://github.com/tiann/KernelSU)/[KOWSU](https://github.com/KOWX712/KernelSU) 作为管理器与 BakaSU 内核共同工作
 7. 内核级 NoMount 管理器（移植自 [maxsteeel/nomount](https://github.com/maxsteeel/nomount)），可在设置页“附加功能”中使用
+8. 内核级 Zygisk（移植自 [Rouyashiki/YukiZygisk](https://github.com/Rouyashiki/YukiZygisk)），直接内置在内核里：不需要任何外部 KernelSU Zygisk 模块，同样可在设置页“附加功能”中管理
 
 ## 兼容状态
 
@@ -34,6 +35,8 @@
 - `Tracepoint Syscall Redirect Hook` 只支持在 GKI2 内核(5.10+) 工作
 
 - [NoMount](https://github.com/maxsteeel/nomount) 上游**仅**在 GKI 5.10 - 6.12 上验证。BakaSU 额外把同一个驱动在 Linux 4.9 及以上直接编进内核（built-in），因此旧的非 GKI 内核自己编译内核后同样拥有完整功能；低于 4.9 与 6.18 及以上内核不参与编译，工具箱页面会提示暂不支持。
+
+- [YukiZygisk](https://github.com/Rouyashiki/YukiZygisk) 上游**只**提供独立的外部模块，且仅支持 ARM64。BakaSU 把同一个驱动直接编进内核（`CONFIG_KSU_YUKIZYGISK`），因此内置内核与 LKM 两种形态都可用，并会在开机时由 `ksud` 落盘用户态 payload（`libzygisk`、`libyukizncore`、`libyloader` 与 `zygiskd` 守护进程）。它只为 ARM64 编译，支持 Linux 5.10 - 6.18；超出该范围的内核在编译阶段就会跳过该驱动，工具箱页面会提示暂不支持。
 
 ## Hook 模式
 - `Tracepoint Syscall Redirect hook` 默认模式, 来自于 [上游](https://github.com/tiann/KernelSU), 但是只支持 GKI2 内核且为 `arm64-v8a` 或 `x86_64` 架构

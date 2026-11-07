@@ -1,0 +1,112 @@
+name: Build YukiZygisk
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        required: false
+        type: string
+        default: aarch64-linux-android
+        description: "Payload host target; arm64 and armv7 payloads are always built together"
+      os:
+        required: false
+        type: string
+        default: ubuntu-latest
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  ANDROID_NDK_VERSION: "30.0.16248370"
+
+jobs:
+  build:
+    name: Build YukiZygisk payload
+    runs-on: ${{ inputs.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Android SDK and pinned NDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools ndk;30.0.16248370
+
+      - name: Select pinned NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="$ANDROID_SDK_ROOT"
+          test -n "$sdk_root"
+          ndk_root="$sdk_root/ndk/$ANDROID_NDK_VERSION"
+          test -x "$ndk_root/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+          echo "ANDROID_NDK_HOME=$ndk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ndk_root" >> "$GITHUB_ENV"
+
+      - name: Build YukiZygisk payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Regenerates the freestanding injector blobs and verifies that the
+          # in-kernel copies in kernel/feature/yukizygisk/native_blob*.h match.
+          python3 userspace/zygisk/inject/generate.py --ndk "$ANDROID_NDK_HOME"
+
+          core_dir="$PWD/userspace/zygisk/core"
+          daemon_dir="$PWD/userspace/zygisk/daemon"
+          toolchain="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
+          export AR="$toolchain/bin/llvm-ar"
+          export RANLIB="$toolchain/bin/llvm-ranlib"
+          export STRIP="$toolchain/bin/llvm-strip"
+
+          build_payload() {
+            local source_dir="$1"
+            local abi="$2"
+            local android_target="$3"
+            local build_dir="$4"
+            export CC="$toolchain/bin/$android_target-clang"
+            export CXX="$toolchain/bin/$android_target-clang++"
+            cmake -S "$source_dir" -B "$build_dir" \
+              -G Ninja \
+              -DCMAKE_SYSTEM_NAME=Android \
+              -DCMAKE_ANDROID_ARCH_ABI="$abi" \
+              -DCMAKE_ANDROID_NDK="$ANDROID_NDK_HOME" \
+              -DCMAKE_SYSTEM_VERSION=31 \
+              -DCMAKE_C_COMPILER="$CC" \
+              -DCMAKE_CXX_COMPILER="$CXX" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DYUKISU_ENABLE_CLANG_TIDY=OFF
+            cmake --build "$build_dir"
+          }
+
+          build_payload "$core_dir" arm64-v8a aarch64-linux-android31 "$core_dir/build"
+          build_payload "$daemon_dir" arm64-v8a aarch64-linux-android31 "$daemon_dir/build"
+          build_payload "$core_dir" armeabi-v7a armv7a-linux-androideabi31 "$core_dir/build-armv7"
+          build_payload "$daemon_dir" armeabi-v7a armv7a-linux-androideabi31 "$daemon_dir/build-armv7"
+
+          dist="$core_dir/dist"
+          rm -rf "$dist"
+          mkdir -p "$dist"
+          cp "$daemon_dir/build/zygiskd64" \
+             "$daemon_dir/build-armv7/zygiskd32" \
+             "$core_dir/build/libzygisk64.so" \
+             "$core_dir/build/libyloader64.so" \
+             "$core_dir/build/libyukizncore64.so" \
+             "$core_dir/build-armv7/libzygisk32.so" \
+             "$core_dir/build-armv7/libyloader32.so" \
+             "$core_dir/build-armv7/libyukizncore32.so" "$dist/"
+
+          for asset in zygiskd64 zygiskd32 \
+            libzygisk64.so libzygisk32.so \
+            libyloader64.so libyloader32.so \
+            libyukizncore64.so libyukizncore32.so; do
+            test -s "$dist/$asset"
+          done
+          ls -lh "$dist"
+          file "$dist"/*
+
+      - name: Upload YukiZygisk artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: yukizygisk-aarch64-linux-android
+          path: userspace/zygisk/core/dist/*
+          if-no-files-found: error

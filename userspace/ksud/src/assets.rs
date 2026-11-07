@@ -63,10 +63,28 @@ mod android {
         Ok(())
     }
 
+    /// YukiZygisk 的 .so payload 由 ksud 单独落到
+    /// /data/adb/ksu/lib/yukizygisk/，不能当作普通二进制解到 BINARY_DIR。
+    fn is_zygisk_payload(file: &str) -> bool {
+        matches!(
+            file,
+            "libyloader64.so"
+                | "libyloader32.so"
+                | "libzygisk64.so"
+                | "libzygisk32.so"
+                | "libyukizncore64.so"
+                | "libyukizncore32.so"
+        )
+    }
+
     pub fn ensure_binaries(ignore_if_exist: bool) -> anyhow::Result<()> {
         for file in Asset::iter() {
             if file == "ksuinit" || file == "waitsys" || file.ends_with(".ko") {
                 // don't extract internal executables and kernel modules
+                continue;
+            }
+            if is_zygisk_payload(&file) {
+                // YukiZygisk payloads are staged into lib/yukizygisk by ksud itself
                 continue;
             }
             let asset =

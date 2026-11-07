@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Rouyashiki <https://rouyashiki.org>
+
+name: Build Android SDK
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  NDK_VERSION: 30.0.16248370
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        abi: [arm64-v8a, armeabi-v7a]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install NDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION"
+          echo "ANDROID_NDK=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+      - name: Build production libraries and Native hosts
+        run: |
+          cmake -S tests -B out/hosts -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI='${{ matrix.abi }}' -DANDROID_PLATFORM=android-31
+          cmake --build out/hosts --parallel 4
+          cmake --install out/hosts/sdk --prefix "$PWD/out/install"
+      - name: Build installed and source consumers
+        shell: bash
+        run: |
+          for form in archive sources; do
+            for language in C CXX; do
+              cmake -S tests/consumer -B "out/$form-$language" -G Ninja \
+                -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK/build/cmake/android.toolchain.cmake" \
+                -DANDROID_ABI='${{ matrix.abi }}' -DANDROID_PLATFORM=android-31 \
+                -DYUKILINKER_RUNTIME_FORM="$form" -DYUKILINKER_CONSUMER_LANGUAGE="$language" \
+                -DYukiLinker_DIR="$PWD/out/install/lib/cmake/YukiLinker"
+              cmake --build "out/$form-$language" --target core --parallel 4
+            done
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yukilinker-${{ matrix.abi }}
+          path: out/install/

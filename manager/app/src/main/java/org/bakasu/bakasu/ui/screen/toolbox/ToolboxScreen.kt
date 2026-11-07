@@ -103,6 +103,18 @@ fun ToolboxScreen() {
                     )
                 },
             )
+
+            // 内核内置 YukiZygisk 管理器 (对齐 Rouyashiki/YukiZygisk yzctl 的功能面)
+            add(
+                ToolboxSubpage(
+                    title = stringResource(R.string.zygisk_table_title),
+                ) { innerPadding, nestedScrollConnection ->
+                    ZygiskTab(
+                        innerPadding = innerPadding,
+                        nestedScrollConnection = nestedScrollConnection,
+                    )
+                },
+            )
         }
     }
 

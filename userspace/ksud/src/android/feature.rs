@@ -10,7 +10,7 @@ use const_format::concatcp;
 
 use crate::feature_id::{FeatureId, parse_feature_id};
 use crate::{
-    android::{ksucalls, module, sulog},
+    android::{ksucalls, module, sulog, zygisk},
     defs,
 };
 
@@ -25,6 +25,15 @@ fn on_feature_applied(feature_id: FeatureId, value: u64) {
         && let Err(err) = sulog::ensure_sulogd_running()
     {
         log::warn!("failed to ensure sulogd is running after feature init: {err:#}");
+    }
+    if feature_id == FeatureId::Yukizygisk {
+        if value != 0 {
+            if let Err(err) = zygisk::ensure_ready() {
+                log::warn!("failed to prepare yukizygisk after feature init: {err:#}");
+            }
+        } else if let Err(err) = zygisk::snapshot::clear() {
+            log::warn!("failed to clear yukizygisk snapshot after feature init: {err:#}");
+        }
     }
 }
 

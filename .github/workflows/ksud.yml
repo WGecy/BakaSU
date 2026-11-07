@@ -49,6 +49,25 @@ jobs:
           mv ksuinit-riscv64/ksuinit ./userspace/ksud/bin/riscv64/
           mv ksuinit-armv7/ksuinit ./userspace/ksud/bin/arm/
 
+      - name: Prepare YukiZygisk payload
+        if: ${{ inputs.target == 'aarch64-linux-android' || inputs.target == 'armv7-linux-androideabi' }}
+        run: |
+          # YukiZygisk only ships arm64-v8a / armeabi-v7a payloads. zygiskd is
+          # extracted to /data/adb/ksu/bin, the .so payloads are staged into
+          # /data/adb/ksu/lib/yukizygisk/ by ksud itself at boot.
+          src=yukizygisk-aarch64-linux-android
+          if [ "${{ inputs.target }}" = "aarch64-linux-android" ]; then
+            cp "$src"/zygiskd64 "$src"/zygiskd32 \
+               "$src"/libzygisk64.so "$src"/libzygisk32.so \
+               "$src"/libyloader64.so "$src"/libyloader32.so \
+               "$src"/libyukizncore64.so "$src"/libyukizncore32.so \
+               ./userspace/ksud/bin/aarch64/
+          else
+            cp "$src"/zygiskd32 \
+               "$src"/libzygisk32.so "$src"/libyloader32.so "$src"/libyukizncore32.so \
+               ./userspace/ksud/bin/arm/
+          fi
+
       - name: Setup Rust toolchain
         if: ${{ inputs.target != 'riscv64-linux-android' }}
         uses: dtolnay/rust-toolchain@stable

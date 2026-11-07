@@ -9,6 +9,7 @@ on:
       - '.github/workflows/ddk-lkm.yml'
       - '.github/workflows/ksud.yml'
       - '.github/workflows/ksuinit.yml'
+      - '.github/workflows/yukizygisk.yml'
       - '.github/riscv64-cargo.toml'
       - 'manager/**'
       - 'kernel/**'
@@ -84,8 +85,14 @@ jobs:
   build-ksuinit:
     uses: ./.github/workflows/ksuinit.yml
 
+  build-yukizygisk:
+    uses: ./.github/workflows/yukizygisk.yml
+    with:
+      target: aarch64-linux-android
+      os: ubuntu-latest
+
   build-ksud:
-    needs: [build-lkm, build-ksuinit]
+    needs: [build-lkm, build-ksuinit, build-yukizygisk]
     strategy:
       matrix:
         target:

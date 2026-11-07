@@ -123,6 +123,11 @@ pub fn on_post_fs_data() -> Result<()> {
         }
     }
 
+    // YukiZygisk 内置: payload 落盘 + early-native 快照 + zygiskd
+    if let Err(e) = crate::android::zygisk::ensure_ready() {
+        warn!("yukizygisk: 初始化失败: {e:#}");
+    }
+
     // execute metamodule post-fs-data script first (priority)
     if let Err(e) = metamodule::exec_stage_script("post-fs-data", wait) {
         warn!("exec metamodule post-fs-data script failed: {e}");

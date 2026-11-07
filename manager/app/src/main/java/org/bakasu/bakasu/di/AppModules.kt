@@ -22,6 +22,7 @@ import org.bakasu.bakasu.data.flash.FlashRepository
 import org.bakasu.bakasu.data.kernel.KernelRepository
 import org.bakasu.bakasu.data.kernel.NomountRepository
 import org.bakasu.bakasu.data.kernel.UmountRepository
+import org.bakasu.bakasu.data.kernel.ZygiskRepository
 import org.bakasu.bakasu.data.logging.BugreportRepository
 import org.bakasu.bakasu.data.logging.SulogRepository
 import org.bakasu.bakasu.data.module.ModuleActionRepository
@@ -79,6 +80,7 @@ import org.bakasu.bakasu.domain.usecase.EnableSulogUseCase
 import org.bakasu.bakasu.domain.usecase.EnqueueDownloadUseCase
 import org.bakasu.bakasu.domain.usecase.EnqueueManagerUpdateUseCase
 import org.bakasu.bakasu.domain.usecase.EnsureManagerInstalledUseCase
+import org.bakasu.bakasu.domain.usecase.EnsureZygiskDaemonUseCase
 import org.bakasu.bakasu.domain.usecase.ExecuteFlashOperationUseCase
 import org.bakasu.bakasu.domain.usecase.ExecuteModuleActionUseCase
 import org.bakasu.bakasu.domain.usecase.ExportProfileTemplatesUseCase
@@ -136,6 +138,7 @@ import org.bakasu.bakasu.domain.usecase.ObserveStartupStateUseCase
 import org.bakasu.bakasu.domain.usecase.ObserveSulogStateUseCase
 import org.bakasu.bakasu.domain.usecase.ObserveSuperUserStateUseCase
 import org.bakasu.bakasu.domain.usecase.ObserveUmountStateUseCase
+import org.bakasu.bakasu.domain.usecase.ObserveZygiskStateUseCase
 import org.bakasu.bakasu.domain.usecase.PeekOneshotScriptUseCase
 import org.bakasu.bakasu.domain.usecase.PrepareScriptUseCase
 import org.bakasu.bakasu.domain.usecase.RebootUseCase
@@ -147,7 +150,10 @@ import org.bakasu.bakasu.domain.usecase.RefreshProfileTemplatesUseCase
 import org.bakasu.bakasu.domain.usecase.RefreshSulogUseCase
 import org.bakasu.bakasu.domain.usecase.RefreshSuperUsersUseCase
 import org.bakasu.bakasu.domain.usecase.RefreshUmountPathsUseCase
+import org.bakasu.bakasu.domain.usecase.RefreshZygiskSnapshotUseCase
+import org.bakasu.bakasu.domain.usecase.RefreshZygiskStateUseCase
 import org.bakasu.bakasu.domain.usecase.ReleaseScriptUseCase
+import org.bakasu.bakasu.domain.usecase.ReloadZygiskModulesUseCase
 import org.bakasu.bakasu.domain.usecase.RemoveModuleRepositoryUseCase
 import org.bakasu.bakasu.domain.usecase.RemoveNomountExclusionUseCase
 import org.bakasu.bakasu.domain.usecase.RemoveNomountRuleUseCase
@@ -177,6 +183,8 @@ import org.bakasu.bakasu.domain.usecase.SetShellSuAdbOnlyEnabledUseCase
 import org.bakasu.bakasu.domain.usecase.SetStringPreferenceUseCase
 import org.bakasu.bakasu.domain.usecase.SetStringSetPreferenceUseCase
 import org.bakasu.bakasu.domain.usecase.SetSuEnabledUseCase
+import org.bakasu.bakasu.domain.usecase.SetZygiskConfigUseCase
+import org.bakasu.bakasu.domain.usecase.SetZygiskEnabledUseCase
 import org.bakasu.bakasu.domain.usecase.StartKernelFlashUseCase
 import org.bakasu.bakasu.domain.usecase.SuSFSConfigUseCase
 import org.bakasu.bakasu.domain.usecase.TakeModuleUriPermissionUseCase
@@ -214,6 +222,7 @@ import org.bakasu.bakasu.ui.viewmodel.SuperUserViewModel
 import org.bakasu.bakasu.ui.viewmodel.TemplateEditorViewModel
 import org.bakasu.bakasu.ui.viewmodel.TemplateViewModel
 import org.bakasu.bakasu.ui.viewmodel.UmountManagerScreenViewModel
+import org.bakasu.bakasu.ui.viewmodel.ZygiskViewModel
 import org.bakasu.bakasu.ui.webui.MonetColorsProvider
 import org.koin.android.ext.koin.androidApplication
 import org.koin.core.module.dsl.factoryOf
@@ -304,6 +313,7 @@ val repositoryModule = module {
     singleOf(::BugreportRepository)
     singleOf(::UmountRepository)
     singleOf(::NomountRepository)
+    singleOf(::ZygiskRepository)
     singleOf(::ModuleCatalogRepository)
     single { ModuleReleaseRepository(get(), get(applicationScopeQualifier)) }
     singleOf(::ModuleIconRepository)
@@ -440,6 +450,13 @@ val useCaseModule = module {
     factoryOf(::RemoveNomountRuleUseCase)
     factoryOf(::AddNomountExclusionUseCase)
     factoryOf(::RemoveNomountExclusionUseCase)
+    factoryOf(::ObserveZygiskStateUseCase)
+    factoryOf(::RefreshZygiskStateUseCase)
+    factoryOf(::SetZygiskEnabledUseCase)
+    factoryOf(::ReloadZygiskModulesUseCase)
+    factoryOf(::RefreshZygiskSnapshotUseCase)
+    factoryOf(::EnsureZygiskDaemonUseCase)
+    factoryOf(::SetZygiskConfigUseCase)
     factoryOf(::ObserveKernelFlashUseCase)
     factoryOf(::StartKernelFlashUseCase)
     factoryOf(::RemovePreferenceUseCase)
@@ -494,6 +511,7 @@ val viewModelModule = module {
     viewModelOf(::SuSFSViewModel)
     viewModelOf(::IoSchedulerViewModel)
     viewModelOf(::NomountViewModel)
+    viewModelOf(::ZygiskViewModel)
     viewModel { parameters -> ModuleRepoViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), parameters.getOrNull<String>()) }
     viewModel { parameters -> ModuleDetailViewModel(parameters[0], parameters[1], get(), get(), get(), get(), get(), get(), get()) }
     viewModelOf(::RepositorySourcesViewModel)

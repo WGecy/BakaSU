@@ -84,6 +84,38 @@ static inline int ksu_selinux_inode_init(void)
 
 extern u32 ksu_file_sid;
 
+/*
+ * Reference counted, temporary SELinux permissions used by the built-in
+ * zygisk runtime: a su-domain daemon hands an injected process a read-only
+ * file descriptor, and the injected core maps an executable image out of a
+ * tmpfs-backed memfd. Each successful grant fills @state and must be undone
+ * with ksu_file_load_policy_restore() once the transfer is complete.
+ */
+struct ksu_file_load_policy {
+    u32 src_type;
+    u32 tgt_type;
+    u32 tmpfs_type;
+    u32 process_type;
+    u16 target_class;
+    u16 process_class;
+    u16 dir_class;
+    u16 reserved;
+    u32 added_av;
+    u32 tmpfs_added_av;
+    u32 process_added_av;
+    u32 dir_added_av;
+    u32 file_lease_refs;
+    u32 tmpfs_lease_refs;
+    u32 dir_lease_refs;
+    u32 process_lease_refs;
+};
+
+int ksu_file_load_policy_allow_current(struct file *file, struct ksu_file_load_policy *state);
+int ksu_file_load_policy_allow_cred(struct file *file, const struct cred *cred, struct ksu_file_load_policy *state);
+int ksu_file_load_policy_allow_execmem_current(struct ksu_file_load_policy *state);
+int ksu_file_load_policy_allow_execmem_cred(const struct cred *cred, struct ksu_file_load_policy *state);
+int ksu_file_load_policy_restore(const struct ksu_file_load_policy *state);
+
 void __init ksu_selinux_init();
 
 #endif

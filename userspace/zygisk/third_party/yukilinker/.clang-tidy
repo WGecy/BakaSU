@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Rouyashiki <https://rouyashiki.org>
+
+Checks: >-
+  -*,
+  clang-analyzer-*,
+  bugprone-*,
+  performance-*,
+  portability-*,
+  modernize-use-nullptr,
+  -bugprone-easily-swappable-parameters,
+  -performance-enum-size,
+  -portability-avoid-pragma-once
+WarningsAsErrors: ''
+HeaderFilterRegex: '(^|/)(include|src|tests)/'

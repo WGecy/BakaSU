@@ -1,0 +1,53 @@
+# YukiZygisk: in-tree kernel-side Zygisk implementation.
+# YukiSU ships this feature behind a bare make variable; BakaSU exposes it as a
+# real Kconfig symbol (CONFIG_KSU_YUKIZYGISK) so LKM and built-in builds share
+# one switch, exactly like the NoMount port.
+
+kernelsu-objs += feature/yukizygisk/main.o
+kernelsu-objs += feature/yukizygisk/endpoint.o
+kernelsu-objs += feature/yukizygisk/config.o
+kernelsu-objs += feature/yukizygisk/load_policy.o
+kernelsu-objs += feature/yukizygisk/safemode.o
+kernelsu-objs += feature/yukizygisk/runtime.o
+kernelsu-objs += feature/yukizygisk/early_native.o
+kernelsu-objs += feature/yukizygisk/payload.o
+kernelsu-objs += feature/yukizygisk/injector.o
+kernelsu-objs += feature/yukizygisk/tango.o
+kernelsu-objs += feature/yukizygisk/exec.o
+kernelsu-objs += feature/yukizygisk/lifecycle.o
+kernelsu-objs += feature/yukizygisk/events.o
+kernelsu-objs += feature/yukizygisk/process_exit.o
+kernelsu-objs += feature/yukizygisk/exit_history.o
+kernelsu-objs += feature/yukizygisk/fd_handoff.o
+
+# The feature is written in C99 (mid-block declarations) while trees older than
+# 5.15 default to -std=gnu89; CFLAGS_<basename>.o wins over KBUILD_CFLAGS.
+CFLAGS_main.o += -std=gnu11
+CFLAGS_endpoint.o += -std=gnu11
+CFLAGS_config.o += -std=gnu11
+CFLAGS_load_policy.o += -std=gnu11
+CFLAGS_safemode.o += -std=gnu11
+CFLAGS_runtime.o += -std=gnu11
+CFLAGS_early_native.o += -std=gnu11
+CFLAGS_payload.o += -std=gnu11
+CFLAGS_injector.o += -std=gnu11
+CFLAGS_tango.o += -std=gnu11
+CFLAGS_exec.o += -std=gnu11
+CFLAGS_lifecycle.o += -std=gnu11
+CFLAGS_events.o += -std=gnu11
+CFLAGS_process_exit.o += -std=gnu11
+CFLAGS_exit_history.o += -std=gnu11
+CFLAGS_fd_handoff.o += -std=gnu11
+
+# sched_process_exit grew a "bool group_dead" tracepoint argument in 5.14.
+ifneq ($(shell grep -A3 'sched_process_exit,' $(srctree)/include/trace/events/sched.h 2>/dev/null | grep -c 'bool group_dead'),0)
+ccflags-y += -DYZ_EXIT_HAS_GROUP_DEAD
+endif
+
+# dentry_open() moved to the ANDROID_GKI_VFS_EXPORT_ONLY symbol namespace, so the
+# endpoint state file has to import it when it is not exported in the default NS.
+yz-endpoint-symvers := $(firstword $(wildcard $(objtree)/Module.symvers $(KDIR)/Module.symvers $(KERNEL_SRC)/Module.symvers))
+yz-endpoint-vfs-ns := $(if $(yz-endpoint-symvers),$(shell awk '$$2 == "dentry_open" {print $$5; exit}' $(yz-endpoint-symvers)))
+ifneq ($(strip $(yz-endpoint-vfs-ns)),)
+ccflags-y += -DYZ_ENDPOINT_VFS_NS=$(yz-endpoint-vfs-ns)
+endif

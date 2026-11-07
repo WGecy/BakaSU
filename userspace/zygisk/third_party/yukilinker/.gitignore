@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Rouyashiki <https://rouyashiki.org>
+
+# Build artifacts and local evidence
+out/
+build*/
+.cache/
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.exe
+*.d
+*.pch
+
+# Local agent instructions and tools
+AGENTS.md
+CLAUDE.md
+.claude/
+__pycache__/
+*.py[cod]
