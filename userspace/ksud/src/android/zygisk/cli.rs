@@ -165,7 +165,16 @@ fn target_type_name(target_type: u8) -> &'static str {
 fn status(as_json: bool) -> Result<()> {
     let supported = super::is_supported();
     let enabled = super::is_enabled();
-    let runtime = query_runtime()?;
+    // 内核没有编入 YukiZygisk（或 ioctl 表未注册）时 GET_RUNTIME 会返回 -ENOTTY,
+    // 若直接 ? 传播, 管理器只看到一条失败的命令, 于是把「内核不支持」显示成笼统的
+    // 错误。这里退化成空快照, 保证 supported/enabled 一定能输出给管理器。
+    let (runtime, runtime_error) = match query_runtime() {
+        Ok(runtime) => (runtime, None),
+        Err(error) => (
+            super::RuntimeSnapshot::default(),
+            Some(format!("{error:#}")),
+        ),
+    };
     let cfg = config::read()?;
 
     if as_json {
@@ -202,6 +211,7 @@ fn status(as_json: bool) -> Result<()> {
             "zygote_crashes": runtime.zygote_crashes,
             "safe_mode_zygote": runtime.safe_mode_zygote,
             "capabilities": runtime.capabilities,
+            "runtime_error": runtime_error,
             "config": cfg.to_json(),
             "runtime": records,
         });
@@ -216,6 +226,9 @@ fn status(as_json: bool) -> Result<()> {
     println!("Zygote crashes:   {}", runtime.zygote_crashes);
     println!("Active targets:   {}", runtime.records.len());
     println!("Capabilities:     0x{:x}", runtime.capabilities);
+    if let Some(error) = &runtime_error {
+        println!("Runtime error:    {error}");
+    }
     println!(
         "Config:           {}",
         serde_json::to_string(&cfg.to_json())?

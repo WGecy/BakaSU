@@ -771,6 +771,7 @@
     <string name="zygisk_title">YukiZygisk</string>
     <string name="zygisk_status_loading">正在检测内核支持…</string>
     <string name="zygisk_status_unsupported">当前内核不支持 YukiZygisk</string>
+    <string name="zygisk_status_error">查询内核 YukiZygisk 状态失败</string>
     <string name="zygisk_status_unsupported_kernel">6.19 及以上内核暂不支持 YukiZygisk</string>
     <string name="zygisk_status_unsupported_old_kernel">低于 5.10 的内核不支持 YukiZygisk</string>
     <string name="zygisk_status_active">已生效</string>

@@ -232,8 +232,11 @@ private fun ZygiskOverviewSection(
             else -> R.string.zygisk_status_unsupported
         },
     )
+    // 内核确实不支持时才说「不支持」; 命令本身失败 (例如 ksud 与内核版本不匹配)
+    // 属于另一类问题, 否则用户会误以为是内核没编进 YukiZygisk。
     val statusText = when {
         !pageLoaded -> stringResource(R.string.zygisk_status_loading)
+        uiState.error != null && !uiState.supported -> stringResource(R.string.zygisk_status_error)
         !uiState.supported -> unsupportedText
         uiState.enabled -> stringResource(R.string.zygisk_status_active)
         else -> stringResource(R.string.zygisk_status_inactive)

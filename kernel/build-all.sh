@@ -1,9 +1,10 @@
 #!/bin/bash
 set -e
 
-# YukiZygisk is optional at build time: YUKIZYGISK=n ./kernel/build-all.sh
-# builds without the kernel-level Zygisk subsystem (it is aarch64-only).
-YUKIZYGISK="${YUKIZYGISK:-n}"
+# YukiZygisk is built in by default: YUKIZYGISK=n ./kernel/build-all.sh
+# builds without the kernel-level Zygisk subsystem (it is aarch64-only, so
+# the Kbuild gate drops it silently on other architectures).
+YUKIZYGISK="${YUKIZYGISK:-y}"
 
 if [ -z "$1" ]; then
     KMIS="android12-5.10 android13-5.10 android13-5.15 android14-5.15 android14-6.1 android15-6.6 android16-6.12 android17-6.18"

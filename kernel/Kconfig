@@ -75,7 +75,7 @@ config KSU_DISABLE_NOMOUNT
 config KSU_YUKIZYGISK
 	bool "Enable built-in YukiZygisk (kernel-level Zygisk)"
 	depends on KSU && ARM64
-	default n
+	default y
 	help
 	  Build the YukiZygisk kernel component in-tree: it injects the zygisk
 	  loader into zygote and every app specialisation process from inside
@@ -89,7 +89,9 @@ config KSU_YUKIZYGISK
 	  KSU_FEATURE_YUKIZYGISK; this option only controls whether the code
 	  is compiled in.
 
-	  Say N unless you are porting this to an ARM64 GKI device.
+	  Enabled by default so that a stock build ships a working Zygisk
+	  implementation without any external module.  Say N only if you do
+	  not want the extra code in the image.
 
 config KSU_X86_PATCH_SYSCALL_DISPATCHER
 	bool "Dynamically patch x64's hardened syscall dispatcher to support syscall hooks"

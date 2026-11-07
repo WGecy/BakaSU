@@ -134,6 +134,11 @@ pub fn is_enabled() -> bool {
 /// 写入内核 feature 开关，并按需准备或清理 userspace 侧资源。
 pub fn set_enabled(enabled: bool) -> Result<()> {
     crate::android::feature::set_feature("yukizygisk", if enabled { 1 } else { 0 })?;
+    // set_feature 只写内核内存态, 开机时由 feature::init_features 从
+    // /data/adb/ksu/.feature_config 重放。不落盘的话开关重启即丢失。
+    if let Err(err) = crate::android::feature::save_config() {
+        log::warn!("yukizygisk: persisting feature state failed: {err:#}");
+    }
     if enabled {
         ensure_payload()?;
         push_config();

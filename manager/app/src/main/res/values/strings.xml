@@ -775,6 +775,7 @@
     <string name="zygisk_title">YukiZygisk</string>
     <string name="zygisk_status_loading">Checking support…</string>
     <string name="zygisk_status_unsupported">Kernel YukiZygisk is not available on this device</string>
+    <string name="zygisk_status_error">Failed to query the kernel for YukiZygisk status</string>
     <string name="zygisk_status_unsupported_kernel">Linux 6.19 and newer are not supported by YukiZygisk yet</string>
     <string name="zygisk_status_unsupported_old_kernel">Kernels older than Linux 5.10 are not supported by YukiZygisk</string>
     <string name="zygisk_status_active">Active</string>

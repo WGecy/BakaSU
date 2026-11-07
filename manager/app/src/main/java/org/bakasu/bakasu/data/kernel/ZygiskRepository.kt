@@ -116,8 +116,11 @@ class ZygiskRepository(
                 }
             }
         }
+        // supported 必须来自内核: 内核没编入 YukiZygisk 时 ksud 会返回 false,
+        // 只有 GET_RUNTIME 之类能力缺失时 runtime 才为空但 supported 仍为 true。
+        val runtimeError = json.optString("runtime_error").takeIf { it.isNotBlank() }
         return ZygiskState(
-            supported = true,
+            supported = json.optBoolean("supported"),
             enabled = json.optBoolean("enabled"),
             generation = json.optInt("generation"),
             safeMode = json.optBoolean("safe_mode"),
@@ -133,6 +136,7 @@ class ZygiskRepository(
                 crashProtection = config?.optBoolean("crash_protection") ?: true,
             ),
             records = records,
+            error = runtimeError,
             isLoading = false,
             isRefreshing = false,
         )

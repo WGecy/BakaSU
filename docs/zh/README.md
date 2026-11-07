@@ -36,7 +36,7 @@
 
 - [NoMount](https://github.com/maxsteeel/nomount) 上游**仅**在 GKI 5.10 - 6.12 上验证。BakaSU 额外把同一个驱动在 Linux 4.9 及以上直接编进内核（built-in），因此旧的非 GKI 内核自己编译内核后同样拥有完整功能；低于 4.9 与 6.18 及以上内核不参与编译，工具箱页面会提示暂不支持。
 
-- [YukiZygisk](https://github.com/Rouyashiki/YukiZygisk) 上游**只**提供独立的外部模块，且仅支持 ARM64。BakaSU 把同一个驱动直接编进内核（`CONFIG_KSU_YUKIZYGISK`），因此内置内核与 LKM 两种形态都可用，并会在开机时由 `ksud` 落盘用户态 payload（`libzygisk`、`libyukizncore`、`libyloader` 与 `zygiskd` 守护进程）。它只为 ARM64 编译，支持 Linux 5.10 - 6.18；超出该范围的内核在编译阶段就会跳过该驱动，工具箱页面会提示暂不支持。
+- [YukiZygisk](https://github.com/Rouyashiki/YukiZygisk) 上游**只**提供独立的外部模块，且仅支持 ARM64。BakaSU 把同一个驱动直接编进内核（`CONFIG_KSU_YUKIZYGISK`），因此内置内核与 LKM 两种形态都可用，并会在开机时由 `ksud` 落盘用户态 payload（`libzygisk`、`libyukizncore`、`libyloader` 与 `zygiskd` 守护进程）。它只为 ARM64 编译，支持 Linux 5.10 - 6.18；超出该范围的内核在编译阶段就会跳过该驱动，工具箱页面会提示暂不支持。该选项默认为 `y`，因此预编译 LKM 与自行内置编译默认都带此功能；只有显式传入 `CONFIG_KSU_YUKIZYGISK=n`（或给 `kernel/build-all.sh` 传 `YUKIZYGISK=n`）才会去掉。
 
 ## Hook 模式
 - `Tracepoint Syscall Redirect hook` 默认模式, 来自于 [上游](https://github.com/tiann/KernelSU), 但是只支持 GKI2 内核且为 `arm64-v8a` 或 `x86_64` 架构
