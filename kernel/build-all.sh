@@ -25,7 +25,7 @@ for kmi in $KMIS; do
         -e CONFIG_KSU=m \
         -e CONFIG_KSU_TRACEPOINT_HOOK=y \
         -e CONFIG_KSU_MULTI_MANAGER_SUPPORT=y \
-        -e CONFIG_KSU_YUKIZYGISK=$(YUKIZYGISK) \
+        -e "CONFIG_KSU_YUKIZYGISK=${YUKIZYGISK}" \
         -- \
         "ODIR=$ODIR" \
         -C kernel; then
