@@ -42,6 +42,7 @@ sealed interface HomeUiAction {
     data class SetSimpleMode(val enabled: Boolean) : HomeUiAction
     data class SetNavigationBarBadge(val enabled: Boolean) : HomeUiAction
     data class SetHomeCardIcons(val enabled: Boolean) : HomeUiAction
+    data class SetHideLinkCard(val enabled: Boolean) : HomeUiAction
     data class Reboot(val reason: String) : HomeUiAction
 }
 
@@ -184,6 +185,10 @@ class HomeViewModel(
         it.copy(showHomeCardIcons = enabled)
     }
 
+    fun handleHideLinkCardChange(enabled: Boolean) = updatePreference(PREF_HIDE_LINK, enabled) {
+        it.copy(isHideLinkCard = enabled)
+    }
+
     fun dispatch(action: HomeUiAction) {
         when (action) {
             HomeUiAction.AwaitInitialData -> viewModelScope.launch { awaitInitialData() }
@@ -195,6 +200,8 @@ class HomeViewModel(
             is HomeUiAction.SetNavigationBarBadge -> handleNavigationBarBadgeChange(action.enabled)
 
             is HomeUiAction.SetHomeCardIcons -> handleHomeCardIconsChange(action.enabled)
+
+            is HomeUiAction.SetHideLinkCard -> handleHideLinkCardChange(action.enabled)
 
             is HomeUiAction.Reboot -> viewModelScope.launch {
                 reboot(action.reason).onFailure {
@@ -251,6 +258,7 @@ class HomeViewModel(
                     true,
                 ),
                 showHomeCardIcons = getBooleanPreference(PREF_SHOW_HOME_CARD_ICONS),
+                isHideLinkCard = getBooleanPreference(PREF_HIDE_LINK),
             )
         }
     }
@@ -272,5 +280,6 @@ class HomeViewModel(
         const val PREF_SIMPLE_MODE = "is_simple_mode"
         const val PREF_SHOW_NAVIGATION_BAR_BADGE = "show_navigation_bar_badge"
         const val PREF_SHOW_HOME_CARD_ICONS = "show_home_card_icons"
+        const val PREF_HIDE_LINK = "is_hide_link_card"
     }
 }

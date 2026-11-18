@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.twotone.MenuBook
 import androidx.compose.material.icons.twotone.Android
 import androidx.compose.material.icons.twotone.Block
+import androidx.compose.material.icons.twotone.Build
 import androidx.compose.material.icons.twotone.DeveloperBoard
 import androidx.compose.material.icons.twotone.Error
 import androidx.compose.material.icons.twotone.Extension
@@ -374,7 +375,7 @@ fun HomePage(
             }
 
             // 链接卡片
-            if (!uiState.isSimpleMode) {
+            if (!uiState.isSimpleMode && !uiState.isHideLinkCard) {
                 DonateCard(uiState.showHomeCardIcons)
                 LearnMoreCard(uiState.showHomeCardIcons)
             }
@@ -517,6 +518,16 @@ private fun TopBar(
         ),
         actions = {
             if (uiState.isCoreDataLoaded) {
+                // 工具箱入口
+                IconButton(onClick = {
+                    navigator.push(Route.Toolbox)
+                }) {
+                    Icon(
+                        imageVector = Icons.TwoTone.Build,
+                        contentDescription = stringResource(R.string.toolbox_title),
+                    )
+                }
+
                 // SuSFS 配置按钮
                 if (uiState.systemInfo.susfsVersionSupported) {
                     IconButton(onClick = {

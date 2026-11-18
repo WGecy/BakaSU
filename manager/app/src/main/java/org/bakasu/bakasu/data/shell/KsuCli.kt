@@ -36,12 +36,25 @@ class KsuCliRepository(context: Context) {
     private companion object {
         const val TAG = "KsuCli"
         val MODULE_ID_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9._-]+$")
+
+        /** NoMount injects modules chunk by chunk, far beyond the default shell timeout. */
+        const val NOMOUNT_TIMEOUT_SECONDS = 180L
+
+        const val NOMOUNT_CACHE_MS = 5_000L
+
+        // Must stay in sync with kernel/manager/manager_sign.h.
+        val KNOWN_OFFICIAL_SIGNATURES = setOf(
+            "size: 0x377, hash: d3469712b6214462764a1d8d3e5cbe1d6819a0b629791b9f4101867821f1df64",
+            "size: 0x32a, hash: 9abde89ef090198b0e5c5004110f223a3f59f5f238ac69770739feb9ef462d49",
+        )
     }
 
     private val nativeLibraryDir = context.applicationInfo.nativeLibraryDir
     private val shellLock = Any()
     private var rootShell: Shell? = null
     private var globalMountShell: Shell? = null
+    private val nomountCacheLock = Any()
+    private var nomountCache: Pair<Boolean, Long>? = null
 
     private fun getNativeLibraryPath(name: String): String {
         val library = File(nativeLibraryDir, System.mapLibraryName(name))
@@ -90,9 +103,13 @@ class KsuCliRepository(context: Context) {
         block: Shell.() -> T,
     ): T = createRootShell(globalMnt).use(block)
 
-    fun createRootShell(globalMnt: Boolean = false): Shell {
+    fun createRootShell(
+        globalMnt: Boolean = false,
+        timeoutSeconds: Long? = null,
+    ): Shell {
         Shell.enableVerboseLogging = BuildConfig.DEBUG
         val builder = Shell.Builder.create()
+        if (timeoutSeconds != null) builder.setTimeout(timeoutSeconds)
         return try {
             if (globalMnt) {
                 builder.build(getKsuDaemonPath(), "debug", "su", "-g")
@@ -171,8 +188,7 @@ class KsuCliRepository(context: Context) {
         val out = shell.newJob()
             .add("${getKsuDaemonPath()} debug get-sign ${shellQuote(packageResourcePath)}")
             .to(ArrayList<String>(), null).exec().out
-        out.firstOrNull()?.trim()
-            .orEmpty() == "size: 0x377, hash: d3469712b6214462764a1d8d3e5cbe1d6819a0b629791b9f4101867821f1df64"
+        out.firstOrNull()?.trim().orEmpty() in KNOWN_OFFICIAL_SIGNATURES
     }
 
     suspend fun getFeatureStatus(feature: String): String = withContext(Dispatchers.IO) {
@@ -197,6 +213,43 @@ class KsuCliRepository(context: Context) {
         val valueLine =
             out.firstOrNull { it.trim().startsWith("Value:") } ?: return@withContext null
         valueLine.substringAfter("Value:").trim().toLongOrNull()
+    }
+
+    /** Throwaway shell with a long timeout; falls back to the cached shell. */
+    private fun <T> withNomountShell(block: Shell.() -> T): T {
+        val shell = try {
+            createRootShell(globalMnt = false, timeoutSeconds = NOMOUNT_TIMEOUT_SECONDS)
+        } catch (e: Throwable) {
+            Log.w(TAG, "nomount shell create failed, fallback to cached shell", e)
+            return getRootShell().block()
+        }
+        return shell.use(block)
+    }
+
+    /** Run `ksud nomount <args>` and surface stderr as the failure message. */
+    suspend fun execNomount(args: String): Result<String> = withContext(Dispatchers.IO) {
+        withNomountShell {
+            val command = "${getKsuDaemonPath()} nomount $args"
+            val result = newJob().add(command).to(ArrayList<String>(), null).exec()
+            val stdout = result.out.joinToString("\n").trim()
+            if (result.isSuccess) {
+                Result.success(stdout)
+            } else {
+                val stderr = result.err.joinToString("\n").trim()
+                Result.failure(
+                    IllegalStateException(
+                        stderr.ifBlank { stdout }.ifBlank { "nomount $args failed" },
+                    ),
+                )
+            }
+        }
+    }
+
+    suspend fun setModuleSkipMount(moduleId: String, skip: Boolean): Boolean = withContext(Dispatchers.IO) {
+        if (!MODULE_ID_REGEX.matches(moduleId)) return@withContext false
+        val file = "/data/adb/modules/$moduleId/skip_mount"
+        val command = if (skip) "touch ${shellQuote(file)}" else "rm -f ${shellQuote(file)}"
+        runCatching { runCmd(getRootShell(), command) }.isSuccess
     }
 
     fun install() {
@@ -645,6 +698,10 @@ class KsuCliRepository(context: Context) {
         .exec().out
         .joinToString("\n")
 
+    fun exec(cmd: String): String? = runCatching {
+        runCmd(getRootShell(), cmd)
+    }.getOrNull()?.takeIf { it.isNotBlank() }
+
     fun forceStopApp(packageName: String) {
         val shell = getRootShell()
         val result = shell.newJob().add("am force-stop $packageName").exec()
@@ -665,8 +722,25 @@ class KsuCliRepository(context: Context) {
         launchApp(packageName)
     }
 
+    fun isNoMountBuiltIn(): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        val cached = synchronized(nomountCacheLock) {
+            nomountCache?.takeIf { now - it.second < NOMOUNT_CACHE_MS }?.first
+        }
+        if (cached != null) return cached
+        val result = runCatching {
+            val status = exec("${getKsuDaemonPath()} nomount status").orEmpty()
+            status.contains("supported: true") && status.contains("enabled: true")
+        }.getOrDefault(false)
+        synchronized(nomountCacheLock) { nomountCache = result to now }
+        return result
+    }
+
     fun getMetaModuleImplement(): String {
         try {
+            if (isNoMountBuiltIn()) {
+                return "nomount"
+            }
             val metaModuleProp = SuFile.open("/data/adb/metamodule/module.prop")
             if (!metaModuleProp.isFile) {
                 Log.i(TAG, "Meta module implement: None")

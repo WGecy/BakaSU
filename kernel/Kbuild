@@ -43,6 +43,29 @@ ifdef CONFIG_ARM64
 kernelsu-objs += compat/apatch_conflict.o
 endif
 
+# NoMount: in-tree over Linux 4.9 - 6.18; dropped outside that range or with CONFIG_KSU_DISABLE_NOMOUNT.
+NOMOUNT_KVER := $(shell echo $$(( $(VERSION) * 1000 + $(PATCHLEVEL) )))
+ifeq ($(shell test $(NOMOUNT_KVER) -ge 4009 -a $(NOMOUNT_KVER) -lt 6019 && echo yes),yes)
+ifndef CONFIG_KSU_DISABLE_NOMOUNT
+ccflags-y += -DKSU_NOMOUNT
+kernelsu-objs += nomount/nomount.o
+# -std=gnu11 under both spellings: kbuild renamed per-object flags in 5.4.
+CFLAGS_nomount.o += -std=gnu11
+CFLAGS_nomount/nomount.o += -std=gnu11
+# struct xattr_handler differs per tree, no version guard covers it: probe the header.
+NM_XATTR_HDR := $(srctree)/include/linux/xattr.h
+NM_XATTR_GET_DECL := $(shell awk '/\(\*get\)/ { f = 1 } f { print } f && /;/ { exit }' $(NM_XATTR_HDR) 2>/dev/null)
+ifneq ($(findstring int flags,$(NM_XATTR_GET_DECL)),)
+ccflags-y += -DNM_XATTR_GET_HAS_FLAGS
+endif
+ifneq ($(shell grep -qE '\([*][[:space:]]*__get\)' $(NM_XATTR_HDR) 2>/dev/null && echo 1),)
+ccflags-y += -DNM_HAS_XATTR__GET
+endif
+endif
+else
+$(info -- NoMount: kernel $(VERSION).$(PATCHLEVEL) is outside 4.9 - 6.18, skipping)
+endif
+
 ccflags-y += -Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-missing-prototypes
 ccflags-y += $(call cc-disable-warning, int-conversion)
 ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-unused-variable -Wno-missing-braces

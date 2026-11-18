@@ -188,6 +188,9 @@ class ModuleRepository(
     }
 
     private fun getMetaModuleStatus(): MetaModuleStatus {
+        if (ksuCliRepository.isNoMountBuiltIn()) {
+            return MetaModuleStatus.ACTIVE
+        }
         val directory = "/data/adb/metamodule"
         return when {
             !SuFile.open("$directory/module.prop").exists() -> MetaModuleStatus.MISSING

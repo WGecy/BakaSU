@@ -108,6 +108,13 @@ pub fn on_post_fs_data() -> Result<()> {
     // Load susfs config entries that must capture metadata before mounts/overlays.
     crate::android::susfs::init_event::on_post_fs_data();
 
+    if crate::android::nomount::is_enabled()
+        && !is_safe_mode()
+        && let Err(e) = crate::android::nomount::apply_all()
+    {
+        warn!("nomount: 规则下发失败: {e:#}");
+    }
+
     // execute metamodule post-fs-data script first (priority)
     if let Err(e) = metamodule::exec_stage_script("post-fs-data", wait) {
         warn!("exec metamodule post-fs-data script failed: {e}");
@@ -202,9 +209,9 @@ pub fn on_boot_completed() {
     crate::android::preinit::on_boot_completed();
 
     run_stage("boot-completed", ScriptWait::NoWait);
-    // Load susfs boot-completed
     if !is_safe_mode() {
         crate::android::susfs::init_event::on_boot_completed();
+        crate::android::iosched::apply_if_enabled();
     }
 }
 
