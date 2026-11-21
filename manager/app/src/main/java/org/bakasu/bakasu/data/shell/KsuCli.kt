@@ -24,7 +24,15 @@ import org.bakasu.bakasu.R
 import org.bakasu.bakasu.data.module.registry.DownloadVerificationException
 import org.bakasu.bakasu.data.module.registry.RegistryDownloadStore
 import org.bakasu.bakasu.data.module.registry.copyForInstall
+import org.bakasu.bakasu.domain.model.BuiltinZygiskConfig
+import org.bakasu.bakasu.domain.model.BuiltinZygiskStatus
+import org.bakasu.bakasu.domain.model.FolkMountProvider
+import org.bakasu.bakasu.domain.model.InjectedZygiskModule
+import org.bakasu.bakasu.domain.model.InjectedZygiskProcess
 import org.bakasu.bakasu.domain.model.LkmSelection
+import org.bakasu.bakasu.domain.model.ZygiskImplementationInfo
+import org.bakasu.bakasu.domain.model.ZygiskProcess
+import org.bakasu.bakasu.domain.model.ZygoteAbiStatus
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -33,15 +41,39 @@ import org.json.JSONObject
  * @date 2023/1/1.
  */
 class KsuCliRepository(context: Context) {
+    /** One daemon answer plus when it was read; null means the daemon did not answer. */
+    private class MountBackendAnswer(val provider: FolkMountProvider?, val at: Long)
+
     private companion object {
         const val TAG = "KsuCli"
         val MODULE_ID_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9._-]+$")
+
+        /**
+         * Signatures the kernel accepts as an official manager.
+         *
+         * Must stay in sync with kernel/manager/manager_sign.h: every entry there makes
+         * `debug get-sign` report the same "size: …, hash: …" line compared against here.
+         */
+        val KNOWN_OFFICIAL_SIGNATURES = setOf(
+            "size: 0x377, hash: d3469712b6214462764a1d8d3e5cbe1d6819a0b629791b9f4101867821f1df64",
+            "size: 0x32a, hash: 9abde89ef090198b0e5c5004110f223a3f59f5f238ac69770739feb9ef462d49",
+        )
+
+        /**
+         * How long the mount backend answer is reused.
+         *
+         * The module and home pages both ask within the same refresh, and the daemon
+         * state only changes across boots, so a short window saves two shell round trips.
+         */
+        const val MOUNT_BACKEND_CACHE_MS = 5_000L
     }
 
     private val nativeLibraryDir = context.applicationInfo.nativeLibraryDir
     private val shellLock = Any()
     private var rootShell: Shell? = null
     private var globalMountShell: Shell? = null
+    private val mountBackendLock = Any()
+    private var mountBackendCache: MountBackendAnswer? = null
 
     private fun getNativeLibraryPath(name: String): String {
         val library = File(nativeLibraryDir, System.mapLibraryName(name))
@@ -122,7 +154,7 @@ class KsuCliRepository(context: Context) {
         ShellUtils.fastCmdResult(getRootShell(globalMnt), "${getKsuDaemonPath()} $args")
     }
 
-    private fun shellQuote(value: String): String = "'${value.replace("'", "'\"'\"'")}'"
+    internal fun shellQuote(value: String): String = "'${value.replace("'", "'\"'\"'")}'"
 
     data class DynamicManagerCliConfig(
         val size: Int = 0,
@@ -171,8 +203,7 @@ class KsuCliRepository(context: Context) {
         val out = shell.newJob()
             .add("${getKsuDaemonPath()} debug get-sign ${shellQuote(packageResourcePath)}")
             .to(ArrayList<String>(), null).exec().out
-        out.firstOrNull()?.trim()
-            .orEmpty() == "size: 0x377, hash: d3469712b6214462764a1d8d3e5cbe1d6819a0b629791b9f4101867821f1df64"
+        out.firstOrNull()?.trim().orEmpty() in KNOWN_OFFICIAL_SIGNATURES
     }
 
     suspend fun getFeatureStatus(feature: String): String = withContext(Dispatchers.IO) {
@@ -181,6 +212,71 @@ class KsuCliRepository(context: Context) {
             .add("${getKsuDaemonPath()} feature check $feature").to(ArrayList<String>(), null)
             .exec().out
         out.firstOrNull()?.trim().orEmpty()
+    }
+
+    /** Runs `ksud mount <args>` and returns its stdout. Arguments are never user input. */
+    suspend fun execMount(args: String): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val shell = getRootShell()
+            val result = shell.newJob()
+                .add("${getKsuDaemonPath()} mount $args")
+                .to(ArrayList<String>(), null)
+                .exec()
+            if (!result.isSuccess) {
+                throw IllegalStateException(
+                    (result.err + result.out).joinToString("\n").trim()
+                        .ifBlank { "mount $args failed" },
+                )
+            }
+            result.out.joinToString("\n")
+        }
+    }
+
+    /**
+     * Provider that mounted the modules this boot. The daemon's boot record wins; the
+     * predicted provider only describes the next boot. Null until the daemon answers.
+     */
+    fun getMountProvider(): FolkMountProvider? {
+        val now = SystemClock.elapsedRealtime()
+        synchronized(mountBackendLock) {
+            mountBackendCache?.takeIf { now - it.at < MOUNT_BACKEND_CACHE_MS }?.let { return it.provider }
+        }
+        val provider = runCatching {
+            val raw = runCmd(getRootShell(), "${getKsuDaemonPath()} mount status --json")
+            val payload = raw.lineSequence().firstOrNull { it.trimStart().startsWith("{") }
+            val json = JSONObject(payload ?: return@runCatching null)
+            if (json.optString("boot_result") == "skipped") {
+                FolkMountProvider.NONE
+            } else {
+                FolkMountProvider.fromToken(json.optString("boot_provider").ifBlank { null })
+                    ?: FolkMountProvider.fromToken(json.optString("next_provider").ifBlank { null })
+            }
+        }.getOrNull()
+        synchronized(mountBackendLock) { mountBackendCache = MountBackendAnswer(provider, now) }
+        return provider
+    }
+
+    /** Whether a built-in backend (Folk Mount or NoMount) mounted the modules this boot. */
+    fun isBuiltInMountEngine(): Boolean = when (getMountProvider()) {
+        FolkMountProvider.BUILTIN, FolkMountProvider.NOMOUNT -> true
+        FolkMountProvider.METAMODULE, FolkMountProvider.NONE, null -> false
+    }
+
+    /** Runs a ksud command and returns the whole [Shell.Result]; quote any user input. */
+    suspend fun execKsudResult(args: String): Shell.Result = withContext(Dispatchers.IO) {
+        getRootShell().newJob()
+            .add("${getKsuDaemonPath()} $args")
+            .to(ArrayList<String>(), ArrayList<String>())
+            .exec()
+    }
+
+    /** Runs a raw root shell command and returns stdout, or null on failure. */
+    suspend fun exec(cmd: String): String? = withContext(Dispatchers.IO) {
+        val result = getRootShell().newJob()
+            .add(cmd)
+            .to(ArrayList<String>(), null)
+            .exec()
+        if (!result.isSuccess) null else result.out.joinToString("\n")
     }
 
     suspend fun getFeaturePersistValue(feature: String): Long? = readFeatureValue("--config $feature")
@@ -685,7 +781,132 @@ class KsuCliRepository(context: Context) {
         }
     }
 
+    /** Runs `ksud zygisk ...` and returns stdout, or null when the daemon refused. */
+    private fun runZygisk(args: String): String? {
+        val shell = getRootShell()
+        val result = shell.newJob()
+            .add("${getKsuDaemonPath()} zygisk $args")
+            .to(ArrayList(), ArrayList())
+            .exec()
+        if (!result.isSuccess) {
+            Log.w(TAG, "ksud zygisk $args failed: ${result.err.joinToString("\n")}")
+            return null
+        }
+        return result.out.joinToString("\n").trim()
+    }
+
+    /** Built-in Zygisk (NyaZygisk) runtime state; a failed read reports "nothing enabled". */
+    fun getBuiltinZygiskStatus(): BuiltinZygiskStatus {
+        val payload = runZygisk("status") ?: return BuiltinZygiskStatus()
+        return runCatching {
+            val json = JSONObject(payload.lineSequence().last { it.isNotBlank() })
+            BuiltinZygiskStatus(
+                enabled = json.optBoolean("enabled"),
+                monitorRunning = json.optBoolean("monitor_running"),
+                daemonRunning = json.optBoolean("daemon_running"),
+                zygoteInjected = json.optBoolean("zygote_injected"),
+                fullyActive = json.optBoolean("fully_active"),
+                zygotes = json.optJSONArray("zygotes").toZygoteAbiStatuses(),
+                monitor = json.optJSONObject("monitor")?.toZygiskProcess(),
+                daemons = json.optJSONArray("daemons").toZygiskProcesses(),
+                version = json.optString("version"),
+                versionCode = json.optString("version_code"),
+            )
+        }.getOrElse {
+            Log.w(TAG, "cannot parse built-in Zygisk status", it)
+            BuiltinZygiskStatus()
+        }
+    }
+
+    /** NyaZygisk options (`config.prop`); unreadable options fall back to the shipped defaults. */
+    fun getBuiltinZygiskConfig(): BuiltinZygiskConfig {
+        val payload = runZygisk("config get") ?: return BuiltinZygiskConfig()
+        return runCatching {
+            val json = JSONObject(payload.lineSequence().last { it.isNotBlank() })
+            BuiltinZygiskConfig(
+                anonymousMemory = json.optString("anonymous_memory") == "1",
+                customLinker = json.optString("custom_linker") == "1",
+                pltEngine = json.optString("plt_engine")
+                    .takeIf { it.isNotBlank() }
+                    ?: BuiltinZygiskConfig.PLT_ENGINE_BYTEHOOK,
+            )
+        }.getOrElse {
+            Log.w(TAG, "cannot parse built-in Zygisk options", it)
+            BuiltinZygiskConfig()
+        }
+    }
+
+    /** Writes one NyaZygisk option; the daemon validates the key and the value. */
+    fun setBuiltinZygiskConfig(key: String, value: String): Boolean = runZygisk("config set ${shellQuote(key)} ${shellQuote(value)}") == "true"
+
+    /** Every Zygisk module the built-in is serving, with the processes it is attached to. */
+    fun getInjectedZygiskModules(): List<InjectedZygiskModule> {
+        val payload = runZygisk("modules") ?: return emptyList()
+        return runCatching {
+            val array = JSONObject(payload.lineSequence().last { it.isNotBlank() })
+                .optJSONArray("modules")
+                ?: JSONArray()
+            (0 until array.length()).map { index ->
+                val value = array.getJSONObject(index)
+                InjectedZygiskModule(
+                    id = value.optString("id"),
+                    name = value.optString("name"),
+                    version = value.optString("version"),
+                    type = value.optString("type"),
+                    abi = value.optJSONArray("abi").toStringList(),
+                    targets = value.optJSONArray("targets").toStringList(),
+                    companion = value.optBoolean("companion"),
+                    state = value.optString("state")
+                        .takeIf { it.isNotBlank() }
+                        ?: InjectedZygiskModule.STATE_UNKNOWN,
+                    processes = value.optJSONArray("processes").toInjectedZygiskProcesses(),
+                )
+            }
+        }.getOrElse {
+            Log.w(TAG, "cannot parse injected Zygisk modules", it)
+            emptyList()
+        }
+    }
+
+    /** The Zygisk implementation this system runs, or the one it would run after a reboot. */
+    fun getZygiskImplementationInfo(): ZygiskImplementationInfo {
+        val payload = runZygisk("info") ?: return ZygiskImplementationInfo()
+        return runCatching {
+            val json = JSONObject(payload.lineSequence().last { it.isNotBlank() })
+            ZygiskImplementationInfo(
+                state = json.optString("state").takeIf { it.isNotBlank() }
+                    ?: ZygiskImplementationInfo.STATE_NONE,
+                id = json.optString("id"),
+                name = json.optString("name"),
+                version = json.optString("version"),
+                providers = json.optJSONArray("providers").toStringList(),
+            )
+        }.getOrElse {
+            Log.w(TAG, "cannot parse the Zygisk implementation", it)
+            ZygiskImplementationInfo()
+        }
+    }
+
+    /** Turns the built-in Zygisk on or off; turning it on hands the running system over. */
+    fun setBuiltinZygiskEnabled(enabled: Boolean): Boolean = runZygisk(if (enabled) "on" else "off") == "true"
+
+    /** Switches to the built-in Zygisk or to an installed provider module, live. */
+    fun switchZygiskImplementation(target: String): Boolean = runZygisk("switch ${shellQuote(target)}") == "true"
+
+    /** Reloads the built-in Zygisk monitor so the running zygotes get re-injected. */
+    fun rearmBuiltinZygisk(): Boolean = runZygisk("rearm") == "true"
+
     fun getZygiskImplement(): String {
+        // ksud knows both implementations: the built-in one and an installed
+        // provider module. Ask it first so the home row names whichever is
+        // actually active instead of only the legacy module ids below.
+        val info = getZygiskImplementationInfo()
+        if (info.name.isNotBlank() && info.state != ZygiskImplementationInfo.STATE_NONE) {
+            val label = listOf(info.name, info.version).filter { it.isNotBlank() }.joinToString(" ")
+            Log.i(TAG, "Zygisk implement: $label (${info.state})")
+            return label
+        }
+
         val zygiskModuleIds = listOf(
             "zygisksu",
             "rezygisk",
@@ -763,5 +984,40 @@ class KsuCliRepository(context: Context) {
             Log.e(TAG, "Failed to list umount paths", e)
             ""
         }
+    }
+}
+
+private fun JSONObject.toZygiskProcess(): ZygiskProcess = ZygiskProcess(
+    name = optString("name"),
+    pid = optInt("pid"),
+)
+
+private fun JSONArray?.toZygiskProcesses(): List<ZygiskProcess> {
+    if (this == null) return emptyList()
+    return (0 until length()).map { getJSONObject(it).toZygiskProcess() }
+}
+
+private fun JSONArray?.toZygoteAbiStatuses(): List<ZygoteAbiStatus> {
+    if (this == null) return emptyList()
+    return (0 until length()).map { index ->
+        val value = getJSONObject(index)
+        ZygoteAbiStatus(abi = value.optString("abi"), status = value.optString("status"))
+    }
+}
+
+private fun JSONArray?.toStringList(): List<String> {
+    if (this == null) return emptyList()
+    return (0 until length()).map { optString(it) }
+}
+
+private fun JSONArray?.toInjectedZygiskProcesses(): List<InjectedZygiskProcess> {
+    if (this == null) return emptyList()
+    return (0 until length()).map { index ->
+        val value = getJSONObject(index)
+        InjectedZygiskProcess(
+            name = value.optString("name"),
+            pid = value.optInt("pid"),
+            kind = value.optString("kind"),
+        )
     }
 }

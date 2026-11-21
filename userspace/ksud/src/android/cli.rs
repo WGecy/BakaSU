@@ -87,6 +87,24 @@ enum Commands {
         command: UmountConfigOp,
     },
 
+    /// Manage built-in module mounting (Folk Mount)
+    Mount {
+        #[command(subcommand)]
+        command: MountOp,
+    },
+
+    /// Manage the built-in NoMount backend
+    Nomount {
+        #[command(subcommand)]
+        command: NomountOp,
+    },
+
+    /// Apply and pin the block layer I/O scheduler
+    Iosched {
+        #[command(subcommand)]
+        command: IoschedOp,
+    },
+
     /// Emulate system reboot
     SoftReboot,
 
@@ -174,6 +192,53 @@ enum Commands {
         #[command(subcommand)]
         command: Initrc,
     },
+
+    /// Manage built-in Zygisk (NyaZygisk)
+    Zygisk {
+        #[command(subcommand)]
+        command: ZygiskCommand,
+    },
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum ZygiskCommand {
+    /// Enable built-in Zygisk and start it now
+    On,
+    /// Disable built-in Zygisk
+    Off,
+    /// Check built-in Zygisk status
+    Status,
+    /// Report the active Zygisk implementation (running, reboot, disabled or none)
+    Info,
+    /// Switch to the built-in Zygisk or to an installed provider module, live
+    Switch {
+        /// `builtin` or the id of an installed Zygisk module
+        #[arg(default_value = "builtin")]
+        target: String,
+    },
+    /// List the monitor and daemon processes of an implementation as JSON
+    Processes {
+        /// `builtin` or the id of an installed Zygisk module
+        #[arg(default_value = "builtin")]
+        target: String,
+    },
+    /// List the Zygisk modules the built-in is serving, with their processes, as JSON
+    Modules,
+    /// Reload built-in Zygisk
+    Rearm,
+    /// Read or change NyaZygisk options (`config.prop`)
+    Config {
+        #[command(subcommand)]
+        command: ZygiskConfigCommand,
+    },
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum ZygiskConfigCommand {
+    /// Print all options as JSON
+    Get,
+    /// Set one option, e.g. `ksud zygisk config set custom_linker 1`
+    Set { key: String, value: String },
 }
 
 #[derive(clap::Subcommand, Debug)]
@@ -195,6 +260,128 @@ enum UmountConfigOp {
     Clear,
     /// List all configured auto apply umount configuration
     List,
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum IoschedOp {
+    /// Apply a scheduler to every sd*/nvme* device and re-apply it on boot
+    Apply {
+        /// scheduler name as listed by the kernel, e.g. mq-deadline
+        scheduler: String,
+    },
+
+    /// Drop the pinned scheduler; the next boot keeps the kernel default
+    Clear,
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum MountOp {
+    /// Print current provider, mode, and metamodule presence
+    Status {
+        /// Emit a single JSON object instead of key=value lines
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Set mount mode: auto | builtin | metamodule | nomount | off
+    SetMode {
+        /// one of: auto, builtin, metamodule, nomount, off
+        mode: String,
+    },
+
+    /// Arm or disarm the capture of a boot that never finishes (on|off|dump)
+    Capture {
+        /// one of: on, off, dump
+        action: String,
+        /// seconds to wait before dumping, for `on`
+        #[arg(default_value_t = 150)]
+        seconds: u64,
+    },
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum NomountOp {
+    /// Print driver state, rule counts, and UID exclusions
+    Status {
+        /// Emit a single JSON object instead of key=value lines
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Build the rule list from the modules without touching the kernel
+    Inject {
+        /// Report what would be applied; never talks to the kernel
+        #[arg(long)]
+        dry_run: bool,
+        /// Emit a single JSON object instead of key=value lines
+        #[arg(long)]
+        json: bool,
+        /// With --dry-run, print every rule and every skip reason
+        #[arg(long)]
+        verbose: bool,
+    },
+
+    /// Show the rules the kernel currently holds
+    List {
+        /// Emit a single JSON object instead of text
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Drop every redirection rule; UID exclusions are kept
+    Clear,
+
+    /// Add one module's rules to the running kernel without a reboot
+    HotLoad {
+        /// module id
+        id: String,
+    },
+
+    /// Remove one module's rules from the running kernel without a reboot
+    HotUnload {
+        /// module id
+        id: String,
+    },
+
+    /// Manage the UID exclusions (apps that see the stock filesystem)
+    Uid {
+        #[command(subcommand)]
+        command: NomountUidOp,
+    },
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum NomountUidOp {
+    /// Show the active and stored UID exclusions
+    List {
+        /// Emit a single JSON object instead of text
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Replace the stored list with these UIDs, then apply it
+    Set {
+        /// UIDs to keep; omit to clear the list
+        uids: Vec<u32>,
+    },
+
+    /// Add these UIDs to the stored list, then apply it
+    Add {
+        #[arg(required = true)]
+        uids: Vec<u32>,
+    },
+
+    /// Remove these UIDs from the stored list, then apply it
+    Del {
+        #[arg(required = true)]
+        uids: Vec<u32>,
+    },
+
+    /// Whether isolated processes also see the stock filesystem
+    Isolated {
+        /// `on` or `off`
+        state: String,
+    },
 }
 
 #[derive(clap::Subcommand, Debug)]
@@ -628,6 +815,65 @@ pub fn run() -> Result<()> {
             UmountConfigOp::Clear => umount_config::wipe_umount(),
             UmountConfigOp::List => umount_config::list_umount(),
         },
+        Commands::Mount { command } => match command {
+            MountOp::Status { json } => crate::magic_mount::print_status(json),
+            MountOp::SetMode { mode } => crate::magic_mount::set_mode(&mode),
+            MountOp::Capture { action, seconds } => crate::mount_capture::command(&action, seconds),
+        },
+        Commands::Iosched { command } => match command {
+            IoschedOp::Apply { scheduler } => crate::android::iosched::apply_now(&scheduler),
+            IoschedOp::Clear => crate::android::iosched::clear(),
+        },
+        Commands::Nomount { command } => match command {
+            NomountOp::Status { json } => {
+                let status = crate::nomount::Status::collect()?;
+                crate::nomount::log_probe(&status.probe);
+                status.print(json)
+            }
+            NomountOp::Inject {
+                dry_run,
+                json,
+                verbose,
+            } => crate::nomount::inject(dry_run, json, verbose),
+            NomountOp::List { json } => crate::nomount::print_rules(json),
+            NomountOp::Clear => crate::nomount::clear_rules(),
+            NomountOp::HotLoad { id } => {
+                let applied = crate::nomount::hot_load(&id)?;
+                println!("rules_applied={applied}");
+                Ok(())
+            }
+            NomountOp::HotUnload { id } => {
+                let removed = crate::nomount::hot_unload(&id)?;
+                println!("rules_removed={removed}");
+                Ok(())
+            }
+            NomountOp::Uid { command } => match command {
+                NomountUidOp::List { json } => crate::nomount::uid_edit(None, &[], json),
+                NomountUidOp::Set { uids } => {
+                    crate::nomount::uid_edit(Some(crate::nomount::UidEdit::Set), &uids, false)
+                }
+                NomountUidOp::Add { uids } => {
+                    crate::nomount::uid_edit(Some(crate::nomount::UidEdit::Add), &uids, false)
+                }
+                NomountUidOp::Del { uids } => {
+                    crate::nomount::uid_edit(Some(crate::nomount::UidEdit::Del), &uids, false)
+                }
+                NomountUidOp::Isolated { state } => {
+                    let on = match state.as_str() {
+                        "on" | "1" | "true" => true,
+                        "off" | "0" | "false" => false,
+                        other => {
+                            anyhow::bail!("invalid isolated state {other:?}; expected on or off")
+                        }
+                    };
+                    crate::nomount::uid_edit(
+                        Some(crate::nomount::UidEdit::Isolated(on)),
+                        &[],
+                        false,
+                    )
+                }
+            },
+        },
         Commands::SoftReboot => crate::android::soft_reboot::soft_reboot(),
         Commands::Insmod { module, params } => debug::insmod(&module, &params),
         Commands::Module { command } => {
@@ -953,6 +1199,149 @@ pub fn run() -> Result<()> {
         },
         Commands::Initrc { command } => match command {
             Initrc::Refresh => regenerate_preinit(),
+        },
+        Commands::Zygisk { command } => match command {
+            ZygiskCommand::On => {
+                // The flag alone would only count from the next boot; turning it on also
+                // hands the running system over.
+                crate::android::builtin_zygisk::switch_to(
+                    crate::android::builtin_zygisk::BUILTIN_TARGET,
+                )?;
+                println!("true");
+                Ok(())
+            }
+            ZygiskCommand::Off => {
+                crate::android::builtin_zygisk::disable()?;
+                println!("true");
+                Ok(())
+            }
+            ZygiskCommand::Status => {
+                let enabled = crate::android::builtin_zygisk::is_enabled();
+                // The report in module.prop identifies the built-in; process names
+                // alone are shared with the standalone builds.
+                let monitor_running = crate::android::builtin_zygisk::is_monitor_active();
+                let daemon_running = crate::android::builtin_zygisk::is_daemon_active();
+                let zygote_injected = crate::android::builtin_zygisk::is_zygote_injected();
+                let fully_active = crate::android::builtin_zygisk::is_fully_active();
+                let zygotes: Vec<_> = crate::android::builtin_zygisk::zygote_states()
+                    .into_iter()
+                    .map(|(abi, status)| serde_json::json!({ "abi": abi, "status": status }))
+                    .collect();
+                let monitor = crate::android::builtin_zygisk::monitor_process();
+                let daemons = crate::android::builtin_zygisk::daemon_processes();
+                let (version, version_code) =
+                    crate::android::builtin_zygisk::version().unwrap_or_default();
+                let monitor_json =
+                    monitor.map(|(pid, name)| serde_json::json!({ "name": name, "pid": pid }));
+                let daemons_json: Vec<_> = daemons
+                    .into_iter()
+                    .map(|(pid, name)| serde_json::json!({ "name": name, "pid": pid }))
+                    .collect();
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "enabled": enabled,
+                        "monitor_running": monitor_running,
+                        "daemon_running": daemon_running,
+                        "zygote_injected": zygote_injected,
+                        "fully_active": fully_active,
+                        "zygotes": zygotes,
+                        "monitor": monitor_json,
+                        "daemons": daemons_json,
+                        "version": version,
+                        "version_code": version_code,
+                    })
+                );
+                Ok(())
+            }
+            ZygiskCommand::Info => {
+                let info = crate::android::builtin_zygisk::implementation_info();
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "state": info.state,
+                        "id": info.id,
+                        "name": info.name,
+                        "version": info.version,
+                        "providers": crate::android::builtin_zygisk::provider_ids(),
+                    })
+                );
+                Ok(())
+            }
+            ZygiskCommand::Switch { target } => {
+                crate::android::builtin_zygisk::switch_to(&target)?;
+                println!("true");
+                Ok(())
+            }
+            ZygiskCommand::Processes { target } => {
+                let procs = crate::android::builtin_zygisk::processes(&target)?;
+                let list = |entries: Vec<(i32, String)>| {
+                    entries
+                        .into_iter()
+                        .map(|(pid, name)| serde_json::json!({ "name": name, "pid": pid }))
+                        .collect::<Vec<serde_json::Value>>()
+                };
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "monitors": list(procs.monitors),
+                        "daemons": list(procs.daemons),
+                    })
+                );
+                Ok(())
+            }
+            ZygiskCommand::Modules => {
+                let modules: Vec<serde_json::Value> =
+                    crate::android::builtin_zygisk::injected_modules()
+                        .into_iter()
+                        .map(|module| {
+                            let processes: Vec<serde_json::Value> = module
+                                .processes
+                                .into_iter()
+                                .map(|(name, pid, kind)| {
+                                    serde_json::json!({
+                                        "name": name,
+                                        "pid": pid,
+                                        "kind": kind,
+                                    })
+                                })
+                                .collect();
+                            serde_json::json!({
+                                "id": module.id,
+                                "name": module.name,
+                                "version": module.version,
+                                "type": module.kind,
+                                "abi": module.abi,
+                                "targets": module.targets,
+                                "companion": module.companion,
+                                "state": module.state,
+                                "processes": processes,
+                            })
+                        })
+                        .collect();
+                println!("{}", serde_json::json!({ "modules": modules }));
+                Ok(())
+            }
+            ZygiskCommand::Rearm => {
+                crate::android::builtin_zygisk::rearm()?;
+                println!("true");
+                Ok(())
+            }
+            ZygiskCommand::Config { command } => match command {
+                ZygiskConfigCommand::Get => {
+                    let fields: Vec<String> = crate::android::builtin_zygisk::config_get_all()
+                        .into_iter()
+                        .map(|(k, v)| format!(r#""{k}":"{v}""#))
+                        .collect();
+                    println!("{{{}}}", fields.join(","));
+                    Ok(())
+                }
+                ZygiskConfigCommand::Set { key, value } => {
+                    crate::android::builtin_zygisk::config_set(&key, &value)?;
+                    println!("true");
+                    Ok(())
+                }
+            },
         },
     };
 

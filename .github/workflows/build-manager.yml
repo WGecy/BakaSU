@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/build-manager.yml'
       - '.github/workflows/build-lkm.yml'
+      - '.github/workflows/builtzygisk.yml'
       - '.github/workflows/ddk-lkm.yml'
       - '.github/workflows/ksud.yml'
       - '.github/workflows/ksuinit.yml'
@@ -13,6 +14,8 @@ on:
       - 'manager/**'
       - 'kernel/**'
       - 'userspace/**'
+      - 'external/BuiltZygisk/**'
+      - '.gitmodules'
       - 'scripts/ksubot.py'
   pull_request:
   workflow_call:
@@ -84,8 +87,11 @@ jobs:
   build-ksuinit:
     uses: ./.github/workflows/ksuinit.yml
 
+  build-builtzygisk:
+    uses: ./.github/workflows/builtzygisk.yml
+
   build-ksud:
-    needs: [build-lkm, build-ksuinit]
+    needs: [build-lkm, build-ksuinit, build-builtzygisk]
     strategy:
       matrix:
         target:

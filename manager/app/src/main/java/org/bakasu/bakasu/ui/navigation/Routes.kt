@@ -169,6 +169,18 @@ sealed interface Route :
 
     @Parcelize
     @Serializable
+    data object Toolbox : Route
+
+    @Parcelize
+    @Serializable
+    data object Nomount : Route
+
+    @Parcelize
+    @Serializable
+    data object NomountExclusions : Route
+
+    @Parcelize
+    @Serializable
     data class KernelFlash(
         val kernelUri: String,
         val selectedSlot: String?,

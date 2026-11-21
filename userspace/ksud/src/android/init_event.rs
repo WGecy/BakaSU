@@ -13,6 +13,13 @@ use crate::{
     assets, defs,
 };
 
+/// Run a built-in Zygisk boot step; a failure is logged, never propagated.
+fn builtin_zygisk_step(step: &str, action: impl FnOnce() -> Result<()>) {
+    if let Err(e) = action() {
+        warn!("built-in Zygisk {step} failed: {e}");
+    }
+}
+
 pub fn on_post_fs_data() -> Result<()> {
     if let Err(e) = ksucalls::ensure_uapi_version_matched() {
         error!("{e:#}, skip on_post_fs_data");
@@ -53,8 +60,6 @@ pub fn on_post_fs_data() -> Result<()> {
         }
     }
 
-    let module_dir = defs::MODULE_DIR;
-
     assets::ensure_binaries(true).with_context(|| "Failed to extract bin assets")?;
 
     crate::android::hot_install::clean_trash();
@@ -92,6 +97,10 @@ pub fn on_post_fs_data() -> Result<()> {
         warn!("load sepolicy.rule failed");
     }
 
+    if let Err(e) = crate::android::builtin_zygisk::apply_sepolicy() {
+        warn!("apply builtin zygisk sepolicy failed: {e}");
+    }
+
     if let Err(e) = crate::android::profile::apply_sepolies() {
         warn!("apply root profile sepolicy failed: {e}");
     }
@@ -108,6 +117,11 @@ pub fn on_post_fs_data() -> Result<()> {
     // Load susfs config entries that must capture metadata before mounts/overlays.
     crate::android::susfs::init_event::on_post_fs_data();
 
+    builtin_zygisk_step("cleanup", crate::android::builtin_zygisk::cleanup_disabled);
+
+    // bootstrap built-in zygisk before module post-fs-data
+    builtin_zygisk_step("bootstrap", crate::android::builtin_zygisk::bootstrap);
+
     // execute metamodule post-fs-data script first (priority)
     if let Err(e) = metamodule::exec_stage_script("post-fs-data", wait) {
         warn!("exec metamodule post-fs-data script failed: {e}");
@@ -123,9 +137,9 @@ pub fn on_post_fs_data() -> Result<()> {
         warn!("load system.prop failed: {e}");
     }
 
-    // execute metamodule mount script
-    if let Err(e) = metamodule::exec_mount_script(module_dir) {
-        warn!("execute metamodule mount failed: {e}");
+    // Run the selected mount provider where the metamodule mount script used to run.
+    if let Err(e) = crate::magic_mount::mount_selected_provider() {
+        warn!("folk mount failed: {e:#}");
     }
 
     // Load umount config and apply to kernel
@@ -187,6 +201,10 @@ pub fn on_services() {
     }
 
     info!("on_services triggered!");
+    // Make sure the monitor survived post-fs-data, but do not talk to it: the zygote is
+    // being started right now, and a `ctl rearm` would race the fork injection it is
+    // already performing. The late attach belongs to boot completed.
+    builtin_zygisk_step("monitor", crate::android::builtin_zygisk::ensure_monitor);
     run_stage("service", ScriptWait::NoWait);
 }
 
@@ -197,7 +215,14 @@ pub fn on_boot_completed() {
     }
 
     ksucalls::report_boot_complete();
+
+    if let Err(e) = crate::mount_guard::clear_if_ours(std::path::Path::new(defs::MOUNT_INFLIGHT)) {
+        warn!("folk mount: could not clear the injection record: {e:#}");
+    }
+
     info!("on_boot_completed triggered!");
+
+    builtin_zygisk_step("arm", crate::android::builtin_zygisk::ensure_armed);
 
     crate::android::preinit::on_boot_completed();
 
@@ -205,6 +230,8 @@ pub fn on_boot_completed() {
     // Load susfs boot-completed
     if !is_safe_mode() {
         crate::android::susfs::init_event::on_boot_completed();
+        // Re-apply the pinned I/O scheduler once the boot settles, then keep watching it briefly.
+        crate::android::iosched::apply_if_enabled();
     }
 }
 

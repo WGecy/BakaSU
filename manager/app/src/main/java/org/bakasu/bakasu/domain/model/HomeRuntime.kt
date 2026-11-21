@@ -43,8 +43,14 @@ data class HomeDashboardState(
     val betaManagerUpdate: ManagerUpdateInfo? = null,
     val isBetaManagerUpdateCheckFailed: Boolean = false,
     val isSimpleMode: Boolean = false,
+    /** Hide the donation / learn-more link cards from the home page. */
+    val isHideLinkCard: Boolean = false,
     val showNavigationBarBadge: Boolean = true,
     val showHomeCardIcons: Boolean = false,
+    /** Provider that mounted modules this boot; null until the daemon answered. */
+    val mountProvider: FolkMountProvider? = null,
+    /** Metamodule driving the mount, when the metamodule backend is in use. */
+    val mountMetamoduleId: String? = null,
     val isInitialDataLoaded: Boolean = false,
     val isCoreDataLoaded: Boolean = false,
     val isExtendedDataLoaded: Boolean = false,

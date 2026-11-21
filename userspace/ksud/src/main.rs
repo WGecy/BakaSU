@@ -14,6 +14,25 @@ mod defs;
 mod feature_id;
 mod lkm_image;
 mod lkm_image_btf;
+#[cfg(target_os = "android")]
+mod magic_mount;
+#[cfg(target_os = "android")]
+mod mount_capture;
+#[cfg(any(target_os = "android", test))]
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+mod mount_guard;
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+mod mount_plan;
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+mod mount_ui;
+#[cfg(any(target_os = "android", test))]
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+mod nomount;
+#[cfg(any(target_os = "android", test))]
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+mod nomount_plan;
+#[cfg(any(target_os = "android", test))]
+mod startup_epoch;
 
 fn main() -> anyhow::Result<()> {
     #[cfg(target_os = "android")]

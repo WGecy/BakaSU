@@ -363,6 +363,9 @@ fn create_daemon_impl<F: FnOnce() -> Result<()>>(
         }
     }
 
+    // Drop the inherited copy of a lock the final daemon keeps for itself.
+    crate::startup_epoch::close_inherited_operation_lock();
+
     let do_configure = || -> Result<()> {
         detach_process_group(use_init_pgrp);
         switch_cgroups();

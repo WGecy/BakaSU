@@ -83,8 +83,53 @@ mod android {
 
     pub const UMOUNT_CONFIG_PATH: &str = concatcp!(WORKING_DIR, ".umount");
 
+    pub const BUILTIN_ZYGISK_FLAG: &str = concatcp!(WORKING_DIR, ".builtin_zygisk");
+    /// Where ksud stages the built-in Zygisk binaries and its `module.prop`.
+    pub const BUILTIN_ZYGISK_DIR: &str = concatcp!(WORKING_DIR, "zygisk/");
+    /// Runtime work directory; must match `workDirectory` in BuiltZygisk.
+    pub const BUILTIN_ZYGISK_WORK_DIR: &str = "/data/system/nyazygisk";
+
     pub const DYNAMIC_MANAGER: &str = concatcp!(WORKING_DIR, ".dynamic_manager");
     pub const SUSFS_CONFIG: &str = concatcp!(WORKING_DIR, ".susfs.json");
+
+    // Folk Mount (built-in module mounting)
+    pub const FOLK_MOUNT_CONFIG: &str = concatcp!(WORKING_DIR, "mount_mode");
+    pub const FOLK_MOUNT_WORK_DIR: &str = concatcp!(WORKING_DIR, "workdir/");
+    pub const FOLK_MOUNT_FS_NAME: &str = "FolkMount";
+    // Per-boot runtime record and the concurrency lock for the built-in executor.
+    pub const FOLK_MOUNT_RUNTIME: &str = concatcp!(WORKING_DIR, "mount_runtime");
+    pub const FOLK_MOUNT_LOCK: &str = concatcp!(WORKING_DIR, "mount.lock");
+
+    // Built-in NoMount backend.
+    // Per-boot record of the driver state and the injection result.
+    pub const NOMOUNT_RUNTIME: &str = concatcp!(WORKING_DIR, "nomount_runtime");
+    // UIDs that must see the stock filesystem, one per line.
+    pub const NOMOUNT_UIDS: &str = concatcp!(WORKING_DIR, "nomount_uids");
+    // Last action that changed NoMount kernel state, for diagnostics.
+    pub const NOMOUNT_LAST_ACTION: &str = concatcp!(WORKING_DIR, "nomount_last_action");
+    // Records a step that can wedge the kernel; a stale record makes the next boot skip it.
+    pub const MOUNT_INFLIGHT: &str = concatcp!(WORKING_DIR, "mount_inflight");
+    pub const NOMOUNT_LOAD_INFLIGHT: &str = concatcp!(WORKING_DIR, "nomount_load_inflight");
+    pub const NOMOUNT_LOAD_LOCK: &str = concatcp!(WORKING_DIR, "nomount_load.lock");
+    pub const MOUNT_UI_PENDING: &str = concatcp!(WORKING_DIR, "mount_ui_pending");
+    pub const MOUNT_UI_CONFIG: &str = concatcp!(WORKING_DIR, "mount_ui_guard");
+    // Per-boot mount log, kept small enough to ride along in a bug report.
+    pub const MOUNT_LOG: &str = concatcp!(LOG_DIR, "mount.log");
+    // Size the mount log may reach before the previous one is rotated aside.
+    pub const MOUNT_LOG_MAX_BYTES: u64 = 256 * 1024;
+    // Flag file that arms the opt-in capture of a boot that never finished.
+    pub const MOUNT_CAPTURE_FLAG: &str = concatcp!(WORKING_DIR, "mount_capture");
+    // Where a capture writes what a stuck boot was doing.
+    pub const MOUNT_CAPTURE_LOG: &str = concatcp!(LOG_DIR, "mount_capture.log");
+    // Size the capture log may reach before the previous one is rotated aside.
+    pub const MOUNT_CAPTURE_LOG_MAX_BYTES: u64 = 512 * 1024;
+    // Frozen IO scheduler, replayed onto every block device on boot.
+    pub const IO_SCHEDULER_FLAG: &str = concatcp!(WORKING_DIR, "io_scheduler");
+
+    // Held while a soft reboot rewrites the Android userspace generation.
+    pub const SOFT_REBOOT_LOCK: &str = concatcp!(WORKING_DIR, "soft_reboot.lock");
+    pub const STARTUP_EPOCH_STATE: &str = concatcp!(WORKING_DIR, "startup_epoch.json");
+    pub const STARTUP_EPOCH_LOCK: &str = concatcp!(WORKING_DIR, "startup_epoch.lock");
 
     #[derive(Serialize)]
     pub struct MountInfo {

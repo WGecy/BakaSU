@@ -11,7 +11,7 @@ use std::{
     process::Command,
 };
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use log::{info, warn};
 
 use crate::{
@@ -284,18 +284,37 @@ pub fn exec_mount_script(module_dir: &str) -> Result<()> {
 
     if fs::exists(defs::METAMODULE_DEBUG)? {
         command
-            .stdout(File::open(format!(
+            .stdout(File::create(format!(
                 "{}.out.log",
                 defs::METAMODULE_MOUNT_SCRIPT_LOG
             ))?)
-            .stderr(File::open(format!(
+            .stderr(File::create(format!(
                 "{}.err.log",
                 defs::METAMODULE_MOUNT_SCRIPT_LOG
             ))?);
     }
-    let result = command.status()?;
 
-    ensure!(result.success(), "Metamodule mount script failed");
+    // The mount script shares the post-fs-data stage deadline.
+    let deadline = std::time::Instant::now() + defs::BOOT_STAGE_TIMEOUT;
+    let sigchld = module::SigchldBlock::block().context("Failed to block SIGCHLD")?;
+    let child = command.spawn()?;
+    match sigchld.wait_status_until(child.id() as libc::pid_t, deadline)? {
+        Some(status) if libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0 => {}
+        Some(status) if libc::WIFSIGNALED(status) => {
+            bail!(
+                "Metamodule mount script was killed by signal {}",
+                libc::WTERMSIG(status)
+            );
+        }
+        Some(status) => bail!(
+            "Metamodule mount script failed with status {}",
+            libc::WEXITSTATUS(status)
+        ),
+        None => bail!(
+            "Metamodule mount script did not finish within {}s, so the boot stage stops waiting for it",
+            defs::BOOT_STAGE_TIMEOUT.as_secs()
+        ),
+    }
 
     info!("Metamodule mount script executed successfully");
     Ok(())
