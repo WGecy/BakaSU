@@ -2,4 +2,6 @@
 .cargo/config.toml
 *.bak
 *.sh
+# Embedded into mount_capture.rs with include_str!, so it must be tracked.
+!/src/mount_capture.sh
 /scripts

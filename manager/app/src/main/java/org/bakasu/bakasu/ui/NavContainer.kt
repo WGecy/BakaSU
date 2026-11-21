@@ -96,8 +96,11 @@ import org.bakasu.bakasu.ui.screen.main.MainScreen
 import org.bakasu.bakasu.ui.screen.moduleRepo.AddRepositoryScreen
 import org.bakasu.bakasu.ui.screen.moduleRepo.ModuleRepoScreen
 import org.bakasu.bakasu.ui.screen.moduleRepo.OnlineModuleDetailScreen
+import org.bakasu.bakasu.ui.screen.nomount.NomountExclusionsScreen
+import org.bakasu.bakasu.ui.screen.nomount.NomountScreen
 import org.bakasu.bakasu.ui.screen.susfs.SuSFSConfigScreen
 import org.bakasu.bakasu.ui.screen.themeSettings.ThemeSettingsScreen
+import org.bakasu.bakasu.ui.screen.toolbox.ToolboxScreen
 import org.bakasu.bakasu.ui.theme.BackgroundRenderState
 import org.bakasu.bakasu.ui.theme.LocalBackgroundRenderState
 import org.bakasu.bakasu.ui.theme.ThemeConfig
@@ -599,6 +602,39 @@ fun NavContainer(
                     useBlur = useBlur,
                 ) {
                     DynamicManagerScreen()
+                }
+            }
+            entry<Route.Toolbox>(swipeDismiss = swipeBackDirection) {
+                ManagerNavEntry(
+                    interceptPredictiveBack = interceptPredictiveBack,
+                    onBack = onBack,
+                    themeConfig = themeConfig,
+                    backgroundRenderState = backgroundRenderState,
+                    useBlur = useBlur,
+                ) {
+                    ToolboxScreen()
+                }
+            }
+            entry<Route.Nomount>(swipeDismiss = swipeBackDirection) {
+                ManagerNavEntry(
+                    interceptPredictiveBack = interceptPredictiveBack,
+                    onBack = onBack,
+                    themeConfig = themeConfig,
+                    backgroundRenderState = backgroundRenderState,
+                    useBlur = useBlur,
+                ) {
+                    NomountScreen()
+                }
+            }
+            entry<Route.NomountExclusions>(swipeDismiss = swipeBackDirection) {
+                ManagerNavEntry(
+                    interceptPredictiveBack = interceptPredictiveBack,
+                    onBack = onBack,
+                    themeConfig = themeConfig,
+                    backgroundRenderState = backgroundRenderState,
+                    useBlur = useBlur,
+                ) {
+                    NomountExclusionsScreen()
                 }
             }
             entry<Route.KernelFlash>(swipeDismiss = NavSwipeDirection.None) { key ->

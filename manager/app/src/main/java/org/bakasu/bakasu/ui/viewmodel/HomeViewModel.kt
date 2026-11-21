@@ -17,10 +17,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.bakasu.bakasu.data.count.CountRepository
+import org.bakasu.bakasu.data.kernel.FolkMountRepository
 import org.bakasu.bakasu.data.module.ModuleRepository
 import org.bakasu.bakasu.data.packageinfo.SuperUserRepository
 import org.bakasu.bakasu.data.shell.KsuCliRepository
 import org.bakasu.bakasu.data.system.HomeStateRepository
+import org.bakasu.bakasu.domain.model.FolkMountProvider
 import org.bakasu.bakasu.domain.model.HomeDashboardState
 import org.bakasu.bakasu.domain.model.HomeSystemInfo
 import org.bakasu.bakasu.domain.model.ManagerUpdateChannel
@@ -42,6 +44,7 @@ sealed interface HomeUiAction {
     data class SetSimpleMode(val enabled: Boolean) : HomeUiAction
     data class SetNavigationBarBadge(val enabled: Boolean) : HomeUiAction
     data class SetHomeCardIcons(val enabled: Boolean) : HomeUiAction
+    data class SetHideLinkCard(val enabled: Boolean) : HomeUiAction
     data class Reboot(val reason: String) : HomeUiAction
 }
 
@@ -55,6 +58,7 @@ class HomeViewModel(
     moduleRepository: ModuleRepository,
     private val countRepository: CountRepository,
     private val ksuCliRepository: KsuCliRepository,
+    private val folkMountRepository: FolkMountRepository,
     private val checkManagerUpdate: CheckManagerUpdateUseCase,
     private val getKernelStatus: GetKernelStatusUseCase,
     private val getManagerRuntimeInfo: GetManagerRuntimeInfoUseCase,
@@ -137,9 +141,11 @@ class HomeViewModel(
                     }
                     val managers = async { getManagerRuntimeInfo() }
                     val susfs = async { getSuSFSStatus() }
+                    val mount = async { resolveHomeMount() }
                     val basicInfo = basic.await()
                     val managerInfo = managers.await()
                     val susfsInfo = susfs.await()
+                    val mountSnapshot = mount.await()
                     homeStateRepository.update { current ->
                         current.copy(
                             systemInfo = HomeSystemInfo(
@@ -160,6 +166,8 @@ class HomeViewModel(
                             ),
                             isInitialDataLoaded = true,
                             isExtendedDataLoaded = true,
+                            mountProvider = mountSnapshot?.first,
+                            mountMetamoduleId = mountSnapshot?.second,
                         )
                     }
                 } catch (error: CancellationException) {
@@ -174,6 +182,23 @@ class HomeViewModel(
             }
         }.also { refreshJob = it }
     }
+
+    /**
+     * Provider that mounted the modules this boot.
+     *
+     * The boot record is the real result; the predicted provider is only used when
+     * this boot left no record at all, so the row never guesses over evidence.
+     */
+    private suspend fun resolveHomeMount(): Pair<FolkMountProvider?, String?>? {
+        folkMountRepository.refresh()
+        val status = folkMountRepository.state.value.status ?: return null
+        val provider = when {
+            status.bootResult == "skipped" -> FolkMountProvider.NONE
+            else -> status.bootProvider ?: status.nextProvider
+        }
+        return provider to status.metamoduleId
+    }
+
     fun handleSimpleModeChange(enabled: Boolean) = updatePreference(PREF_SIMPLE_MODE, enabled) { it.copy(isSimpleMode = enabled) }
 
     fun handleNavigationBarBadgeChange(enabled: Boolean) = updatePreference(PREF_SHOW_NAVIGATION_BAR_BADGE, enabled) {
@@ -182,6 +207,10 @@ class HomeViewModel(
 
     fun handleHomeCardIconsChange(enabled: Boolean) = updatePreference(PREF_SHOW_HOME_CARD_ICONS, enabled) {
         it.copy(showHomeCardIcons = enabled)
+    }
+
+    fun handleHideLinkCardChange(enabled: Boolean) = updatePreference(PREF_HIDE_LINK_CARD, enabled) {
+        it.copy(isHideLinkCard = enabled)
     }
 
     fun dispatch(action: HomeUiAction) {
@@ -195,6 +224,8 @@ class HomeViewModel(
             is HomeUiAction.SetNavigationBarBadge -> handleNavigationBarBadgeChange(action.enabled)
 
             is HomeUiAction.SetHomeCardIcons -> handleHomeCardIconsChange(action.enabled)
+
+            is HomeUiAction.SetHideLinkCard -> handleHideLinkCardChange(action.enabled)
 
             is HomeUiAction.Reboot -> viewModelScope.launch {
                 reboot(action.reason).onFailure {
@@ -251,6 +282,7 @@ class HomeViewModel(
                     true,
                 ),
                 showHomeCardIcons = getBooleanPreference(PREF_SHOW_HOME_CARD_ICONS),
+                isHideLinkCard = getBooleanPreference(PREF_HIDE_LINK_CARD),
             )
         }
     }
@@ -272,5 +304,6 @@ class HomeViewModel(
         const val PREF_SIMPLE_MODE = "is_simple_mode"
         const val PREF_SHOW_NAVIGATION_BAR_BADGE = "show_navigation_bar_badge"
         const val PREF_SHOW_HOME_CARD_ICONS = "show_home_card_icons"
+        const val PREF_HIDE_LINK_CARD = "is_hide_link_card"
     }
 }

@@ -83,8 +83,39 @@ mod android {
 
     pub const UMOUNT_CONFIG_PATH: &str = concatcp!(WORKING_DIR, ".umount");
 
+    pub const BUILTIN_ZYGISK_FLAG: &str = concatcp!(WORKING_DIR, ".builtin_zygisk");
+    /// Mirrors `workDirectory` in BuiltZygisk.
+    pub const BUILTIN_ZYGISK_WORK_DIR: &str = "/data/system/nyazygisk";
+    pub const BUILTIN_ZYGISK_DIR: &str = concatcp!(WORKING_DIR, "zygisk/");
+
     pub const DYNAMIC_MANAGER: &str = concatcp!(WORKING_DIR, ".dynamic_manager");
     pub const SUSFS_CONFIG: &str = concatcp!(WORKING_DIR, ".susfs.json");
+
+    pub const FOLK_MOUNT_CONFIG: &str = concatcp!(WORKING_DIR, "mount_mode");
+    pub const FOLK_MOUNT_WORK_DIR: &str = concatcp!(WORKING_DIR, "workdir/");
+    pub const FOLK_MOUNT_FS_NAME: &str = "FolkMount";
+    pub const FOLK_MOUNT_RUNTIME: &str = concatcp!(WORKING_DIR, "mount_runtime");
+    pub const FOLK_MOUNT_LOCK: &str = concatcp!(WORKING_DIR, "mount.lock");
+
+    pub const NOMOUNT_RUNTIME: &str = concatcp!(WORKING_DIR, "nomount_runtime");
+    pub const NOMOUNT_UIDS: &str = concatcp!(WORKING_DIR, "nomount_uids");
+    pub const NOMOUNT_LAST_ACTION: &str = concatcp!(WORKING_DIR, "nomount_last_action");
+    /// A stale record makes the next boot skip the step that wrote it.
+    pub const MOUNT_INFLIGHT: &str = concatcp!(WORKING_DIR, "mount_inflight");
+    pub const NOMOUNT_LOAD_INFLIGHT: &str = concatcp!(WORKING_DIR, "nomount_load_inflight");
+    pub const NOMOUNT_LOAD_LOCK: &str = concatcp!(WORKING_DIR, "nomount_load.lock");
+    pub const MOUNT_UI_PENDING: &str = concatcp!(WORKING_DIR, "mount_ui_pending");
+    pub const MOUNT_UI_CONFIG: &str = concatcp!(WORKING_DIR, "mount_ui_guard");
+    pub const MOUNT_LOG: &str = concatcp!(LOG_DIR, "mount.log");
+    pub const MOUNT_LOG_MAX_BYTES: u64 = 256 * 1024;
+    pub const MOUNT_CAPTURE_FLAG: &str = concatcp!(WORKING_DIR, "mount_capture");
+    pub const MOUNT_CAPTURE_LOG: &str = concatcp!(LOG_DIR, "mount_capture.log");
+    pub const MOUNT_CAPTURE_LOG_MAX_BYTES: u64 = 512 * 1024;
+    pub const IO_SCHEDULER_FLAG: &str = concatcp!(WORKING_DIR, "io_scheduler");
+
+    pub const SOFT_REBOOT_LOCK: &str = concatcp!(WORKING_DIR, "soft_reboot.lock");
+    pub const STARTUP_EPOCH_STATE: &str = concatcp!(WORKING_DIR, "startup_epoch.json");
+    pub const STARTUP_EPOCH_LOCK: &str = concatcp!(WORKING_DIR, "startup_epoch.lock");
 
     #[derive(Serialize)]
     pub struct MountInfo {

@@ -1,0 +1,175 @@
+name: Build BuiltZygisk
+
+# Builds the NyaZygisk payload that ksud embeds as its built-in Zygisk.
+#
+# The sources are the external/BuiltZygisk submodule (plus its own four
+# submodules), so the payload is always produced from a pinned commit instead of
+# being committed as a binary. The result of this workflow is one artifact per
+# architecture, consumed by "Prepare BuiltZygisk" in ksud.yml:
+#
+#   builtzygisk-<arch>/{zygiskd,zygisk-ptrace,libzygisk.so,libzygisk32.so,
+#                       zygisk-sepolicy.rule,zygisk-module.prop}
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      os:
+        required: false
+        type: string
+        default: ubuntu-latest
+
+jobs:
+  build:
+    # inputs.os is empty on a manual run, so fall back to a hosted runner.
+    runs-on: ${{ inputs.os || 'ubuntu-latest' }}
+    env:
+      # zygiskd builds with -Zbuild-std, so cargo must run on nightly.
+      RUSTUP_TOOLCHAIN: nightly
+      CARGO_TERM_COLOR: always
+      # Cap parallelism: the matrix runs one job per target architecture and
+      # every job builds the same C++/Rust tree.
+      MAKEFLAGS: "-j6"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Setup Android SDK packages
+        run: |
+          set -eux
+          # BuiltZygisk pins compileSdk 37, build-tools 37.0.0, NDK 27.2.12479018
+          # and CMake 4.1.2 in its own build.gradle.kts; the runner image ships
+          # none of them that new. Note the platform id is dotted (`android-37.0`):
+          # the SDK repository has no bare `platforms;android-37` package.
+          yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --install \
+            "platforms;android-37.0" \
+            "build-tools;37.0.0" \
+            "ndk;27.2.12479018" \
+            "cmake;4.1.2"
+
+      - name: Setup Rust toolchain
+        run: |
+          set -eux
+          rustup toolchain install nightly --profile minimal --component rust-src
+          rustup default nightly
+          # zygiskd cross-compiles for every Android ABI, so the targets must be
+          # present before cargo ndk runs. riscv64 also needs rust-src (installed
+          # above) because it builds core/std with -Zbuild-std.
+          rustup target add --toolchain nightly \
+            aarch64-linux-android \
+            armv7-linux-androideabi \
+            x86_64-linux-android
+          # riscv64 is built with -Zbuild-std, so a prebuilt rustup target is
+          # not required; only fetch it when the toolchain still ships one.
+          rustup target add --toolchain nightly riscv64-linux-android || true
+
+      - name: Setup cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Check toolchain
+        run: |
+          set -eux
+          ./external/BuiltZygisk/gradlew --version | head -3
+          cargo ndk --version
+          test -d "${ANDROID_HOME}/ndk/27.2.12479018"
+          test -d "${ANDROID_HOME}/cmake/4.1.2"
+
+      - name: Build BuiltZygisk
+        working-directory: external/BuiltZygisk
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
+        run: |
+          set -eux
+          chmod +x gradlew
+          ./gradlew --build-cache :module:zipRelease \
+            -Porg.gradle.parallel=true \
+            -Dorg.gradle.jvmargs=-Xmx2048m
+
+      - name: Organize artifacts
+        working-directory: external/BuiltZygisk
+        run: |
+          set -eux
+          zip="$(find module/build/outputs/release -type f -name 'NyaZygisk-v*-release.zip' | head -n 1)"
+          test -n "$zip"
+          rm -rf extracted
+          mkdir -p extracted
+          unzip -q "$zip" -d extracted
+
+          out="${GITHUB_WORKSPACE}/builtzygisk"
+          for arch in aarch64 arm x86_64 riscv64; do
+            mkdir -p "$out/$arch"
+            # Shared by every architecture: the SELinux rules and the module.prop.
+            cp module/src/sepolicy.rule "$out/$arch/zygisk-sepolicy.rule"
+            cp extracted/module.prop "$out/$arch/zygisk-module.prop"
+          done
+
+          # The 64-bit packages also carry the 32-bit loader for a 32-bit zygote.
+          copy() {
+            [ -f "extracted/$1" ] || return 0
+            cp "extracted/$1" "$out/$2/$3"
+          }
+          copy bin/arm64-v8a/zygiskd             aarch64 zygiskd
+          copy lib/arm64-v8a/libzygisk_ptrace.so aarch64 zygisk-ptrace
+          copy lib/arm64-v8a/libzygisk.so        aarch64 libzygisk.so
+          copy lib/armeabi-v7a/libzygisk.so      aarch64 libzygisk32.so
+
+          copy bin/armeabi-v7a/zygiskd           arm zygiskd
+          copy lib/armeabi-v7a/libzygisk_ptrace.so arm zygisk-ptrace
+          copy lib/armeabi-v7a/libzygisk.so      arm libzygisk.so
+
+          copy bin/x86_64/zygiskd                x86_64 zygiskd
+          copy lib/x86_64/libzygisk_ptrace.so    x86_64 zygisk-ptrace
+          copy lib/x86_64/libzygisk.so           x86_64 libzygisk.so
+          copy lib/x86/libzygisk.so              x86_64 libzygisk32.so
+
+          copy bin/riscv64/zygiskd               riscv64 zygiskd
+          copy lib/riscv64/libzygisk_ptrace.so   riscv64 zygisk-ptrace
+          copy lib/riscv64/libzygisk.so          riscv64 libzygisk.so
+
+          for arch in aarch64 arm x86_64 riscv64; do
+            test -f "$out/$arch/zygiskd"
+            ls -l "$out/$arch"
+          done
+
+      - name: Upload the zygisk payloads
+        uses: actions/upload-artifact@v7
+        with:
+          # Pass the files, not the directory: uploading the arch directory
+          # itself yields builtzygisk-<arch>/<arch>/... and rust-embed then keys
+          # the payload as <arch>/zygiskd, which ksud never looks up.
+          name: builtzygisk-aarch64
+          path: builtzygisk/aarch64/*
+          if-no-files-found: error
+
+      - name: Upload the arm payload
+        uses: actions/upload-artifact@v7
+        with:
+          name: builtzygisk-arm
+          path: builtzygisk/arm/*
+          if-no-files-found: error
+
+      - name: Upload the x86_64 payload
+        uses: actions/upload-artifact@v7
+        with:
+          name: builtzygisk-x86_64
+          path: builtzygisk/x86_64/*
+          if-no-files-found: error
+
+      - name: Upload the riscv64 payload
+        uses: actions/upload-artifact@v7
+        with:
+          name: builtzygisk-riscv64
+          path: builtzygisk/riscv64/*
+          if-no-files-found: error

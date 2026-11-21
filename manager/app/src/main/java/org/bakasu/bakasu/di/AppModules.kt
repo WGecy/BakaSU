@@ -19,6 +19,7 @@ import org.bakasu.bakasu.data.count.CountRepository
 import org.bakasu.bakasu.data.download.DownloadRepository
 import org.bakasu.bakasu.data.file.ModuleFileRepository
 import org.bakasu.bakasu.data.flash.FlashRepository
+import org.bakasu.bakasu.data.kernel.FolkMountRepository
 import org.bakasu.bakasu.data.kernel.KernelRepository
 import org.bakasu.bakasu.data.kernel.UmountRepository
 import org.bakasu.bakasu.data.logging.BugreportRepository
@@ -118,6 +119,7 @@ import org.bakasu.bakasu.domain.usecase.ObserveAssetDownloadUseCase
 import org.bakasu.bakasu.domain.usecase.ObserveCatalogModulesUseCase
 import org.bakasu.bakasu.domain.usecase.ObserveDownloadUseCase
 import org.bakasu.bakasu.domain.usecase.ObserveDynamicManagerStateUseCase
+import org.bakasu.bakasu.domain.usecase.ObserveFolkMountStateUseCase
 import org.bakasu.bakasu.domain.usecase.ObserveInstalledModulesUseCase
 import org.bakasu.bakasu.domain.usecase.ObserveKernelFlashUseCase
 import org.bakasu.bakasu.domain.usecase.ObserveModuleCatalogRefreshingUseCase
@@ -133,6 +135,7 @@ import org.bakasu.bakasu.domain.usecase.PeekOneshotScriptUseCase
 import org.bakasu.bakasu.domain.usecase.PrepareScriptUseCase
 import org.bakasu.bakasu.domain.usecase.RebootUseCase
 import org.bakasu.bakasu.domain.usecase.RefreshDynamicManagerUseCase
+import org.bakasu.bakasu.domain.usecase.RefreshFolkMountStateUseCase
 import org.bakasu.bakasu.domain.usecase.RefreshInstalledModulesUseCase
 import org.bakasu.bakasu.domain.usecase.RefreshModuleCatalogUseCase
 import org.bakasu.bakasu.domain.usecase.RefreshProfileTemplatesUseCase
@@ -153,6 +156,7 @@ import org.bakasu.bakasu.domain.usecase.SetAppProfileUseCase
 import org.bakasu.bakasu.domain.usecase.SetAppSepolicyUseCase
 import org.bakasu.bakasu.domain.usecase.SetBooleanPreferenceUseCase
 import org.bakasu.bakasu.domain.usecase.SetDefaultUmountModulesUseCase
+import org.bakasu.bakasu.domain.usecase.SetFolkMountModeUseCase
 import org.bakasu.bakasu.domain.usecase.SetKernelUmountEnabledUseCase
 import org.bakasu.bakasu.domain.usecase.SetManualDynamicManagerUseCase
 import org.bakasu.bakasu.domain.usecase.SetModuleEnabledUseCase
@@ -177,16 +181,20 @@ import org.bakasu.bakasu.ui.theme.CardConfig
 import org.bakasu.bakasu.ui.theme.ThemeConfig
 import org.bakasu.bakasu.ui.util.Shortcut
 import org.bakasu.bakasu.ui.viewmodel.AppProfileViewModel
+import org.bakasu.bakasu.ui.viewmodel.BuiltinZygiskViewModel
 import org.bakasu.bakasu.ui.viewmodel.DynamicManagerViewModel
 import org.bakasu.bakasu.ui.viewmodel.ExecuteModuleActionViewModel
 import org.bakasu.bakasu.ui.viewmodel.FlashViewModel
+import org.bakasu.bakasu.ui.viewmodel.FolkMountViewModel
 import org.bakasu.bakasu.ui.viewmodel.HomeViewModel
 import org.bakasu.bakasu.ui.viewmodel.InstallViewModel
+import org.bakasu.bakasu.ui.viewmodel.IoSchedulerViewModel
 import org.bakasu.bakasu.ui.viewmodel.KernelFlashViewModel
 import org.bakasu.bakasu.ui.viewmodel.MainIntentViewModel
 import org.bakasu.bakasu.ui.viewmodel.ModuleDetailViewModel
 import org.bakasu.bakasu.ui.viewmodel.ModuleRepoViewModel
 import org.bakasu.bakasu.ui.viewmodel.ModuleViewModel
+import org.bakasu.bakasu.ui.viewmodel.NomountViewModel
 import org.bakasu.bakasu.ui.viewmodel.RepositorySourcesViewModel
 import org.bakasu.bakasu.ui.viewmodel.ScriptRunViewModel
 import org.bakasu.bakasu.ui.viewmodel.SettingsViewModel
@@ -242,6 +250,7 @@ val coreModule = module {
 
 val repositoryModule = module {
     single { KsuCliRepository(androidApplication()) }
+    single { FolkMountRepository(get(), androidApplication()) }
     singleOf(::CountRepository)
     singleOf(::InstalledPackageCache)
     singleOf(::AppIconDataSource)
@@ -332,6 +341,9 @@ val useCaseModule = module {
     factoryOf(::CheckManagerUpdateUseCase)
     factoryOf(::EnsureManagerInstalledUseCase)
     factoryOf(::RebootUseCase)
+    factoryOf(::ObserveFolkMountStateUseCase)
+    factoryOf(::RefreshFolkMountStateUseCase)
+    factoryOf(::SetFolkMountModeUseCase)
     factoryOf(::EnqueueDownloadUseCase)
     factoryOf(::EnqueueManagerUpdateUseCase)
     factoryOf(::ObserveDownloadUseCase)
@@ -476,6 +488,18 @@ val viewModelModule = module {
     viewModelOf(::DynamicManagerViewModel)
     viewModelOf(::FlashViewModel)
     viewModelOf(::UmountManagerScreenViewModel)
+    viewModelOf(::FolkMountViewModel)
+    viewModelOf(::IoSchedulerViewModel)
+    viewModelOf(::NomountViewModel)
+    viewModel {
+        BuiltinZygiskViewModel(
+            context = androidApplication(),
+            ksuCliRepository = get(),
+            moduleRepository = get(),
+            rebootUseCase = get(),
+            applicationScope = get(applicationScopeQualifier),
+        )
+    }
     viewModel { parameters ->
         ExecuteModuleActionViewModel(
             moduleId = parameters[0],

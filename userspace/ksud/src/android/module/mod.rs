@@ -156,6 +156,11 @@ pub fn foreach_module(
             continue;
         }
 
+        if module_type == Active && crate::android::builtin_zygisk::suppresses_module_dir(&path) {
+            info!("{} is suppressed by built-in zygisk, skip", path.display());
+            continue;
+        }
+
         f(&path)?;
     }
 
@@ -190,13 +195,13 @@ pub enum ScriptWait {
     Until(Instant),
 }
 
-struct SigchldBlock {
+pub(crate) struct SigchldBlock {
     set: libc::sigset_t,
     previous: libc::sigset_t,
 }
 
 impl SigchldBlock {
-    fn block() -> std::io::Result<Self> {
+    pub(crate) fn block() -> std::io::Result<Self> {
         // Initialize both sets before passing them to libc.
         let mut set = unsafe { std::mem::zeroed() };
         let mut previous = unsafe { std::mem::zeroed() };
@@ -210,12 +215,16 @@ impl SigchldBlock {
         Ok(Self { set, previous })
     }
 
-    fn wait_until(&self, pid: libc::pid_t, deadline: Instant) -> std::io::Result<bool> {
+    pub(crate) fn wait_status_until(
+        &self,
+        pid: libc::pid_t,
+        deadline: Instant,
+    ) -> std::io::Result<Option<i32>> {
+        let mut status: libc::c_int = 0;
         loop {
-            // Only reap the script being waited for. Other children can also send SIGCHLD.
-            let result = unsafe { libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) };
+            let result = unsafe { libc::waitpid(pid, &raw mut status, libc::WNOHANG) };
             if result == pid {
-                return Ok(true);
+                return Ok(Some(status));
             }
             if result < 0 {
                 let error = std::io::Error::last_os_error();
@@ -227,13 +236,12 @@ impl SigchldBlock {
 
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                return Ok(false);
+                return Ok(None);
             }
             let timeout = libc::timespec {
                 tv_sec: remaining.as_secs() as libc::time_t,
                 tv_nsec: remaining.subsec_nanos() as libc::c_long,
             };
-            // SIGCHLD stays blocked between waitpid and sigtimedwait to avoid lost wakeups.
             if unsafe {
                 libc::sigtimedwait(
                     &raw const self.set,
@@ -244,12 +252,17 @@ impl SigchldBlock {
             {
                 let error = std::io::Error::last_os_error();
                 match error.raw_os_error() {
-                    Some(libc::EAGAIN) => return Ok(false),
+                    Some(libc::EAGAIN) => return Ok(None),
                     Some(libc::EINTR) => {}
                     _ => return Err(error),
                 }
             }
         }
+    }
+
+    fn wait_until(&self, pid: libc::pid_t, deadline: Instant) -> std::io::Result<bool> {
+        self.wait_status_until(pid, deadline)
+            .map(|status| status.is_some())
     }
 }
 
@@ -756,6 +769,17 @@ fn install_module_to_system(zip: &str) -> Result<String> {
     if is_metamodule {
         info!("Installing metamodule: {module_id}");
 
+        if crate::nomount::owns_injection().unwrap_or(false) {
+            println!("\n❌ Installation Failed");
+            println!("┌────────────────────────────────");
+            println!("│ The built-in NoMount backend is active; a metamodule");
+            println!("│ injects files on its own, so both would own the same paths.");
+            println!("│");
+            println!("│ Set the mount mode to auto, builtin or off, reboot, then retry.");
+            println!("└─────────────────────────────────\n");
+            bail!("NO_MOUNT_ACTIVE: NoMount owns module injection; switch the mount mode first");
+        }
+
         // Check if there's already a metamodule installed
         if metamodule::has_metamodule()
             && let Some(existing_path) = metamodule::get_metamodule_path()
@@ -1101,12 +1125,23 @@ fn list_module(path: &str) -> Vec<HashMap<String, String>> {
             }
         }
 
-        // Add enabled, update, remove, web, action flags
+        // Add enabled, update, remove, web, action, zygisk flags
         let enabled = !path.join(defs::DISABLE_FILE_NAME).exists();
         let update = path.join(defs::UPDATE_FILE_NAME).exists();
         let remove = path.join(defs::REMOVE_FILE_NAME).exists();
         let web = path.join(defs::MODULE_WEB_DIR).exists();
         let action = path.join(defs::MODULE_ACTION_SH).exists();
+        let is_provider = module_prop_map
+            .get("id")
+            .is_some_and(|id| crate::android::builtin_zygisk::is_provider_id(id));
+        // A suppressed provider is never reported as running.
+        let suppressed_by_builtin = is_provider && crate::android::builtin_zygisk::is_enabled();
+        if is_provider && let Some(version) = module_prop_map.get("version").cloned() {
+            module_prop_map.insert(
+                "version".to_owned(),
+                crate::android::builtin_zygisk::short_version(&version),
+            );
+        }
         let need_mount = path.join("system").exists() && !path.join("skip_mount").exists();
 
         module_prop_map.insert("enabled".to_owned(), enabled.to_string());
@@ -1114,6 +1149,11 @@ fn list_module(path: &str) -> Vec<HashMap<String, String>> {
         module_prop_map.insert("remove".to_owned(), remove.to_string());
         module_prop_map.insert("web".to_owned(), web.to_string());
         module_prop_map.insert("action".to_owned(), action.to_string());
+        module_prop_map.insert("zygisk".to_owned(), is_provider.to_string());
+        module_prop_map.insert(
+            "suppressed_by_builtin".to_owned(),
+            suppressed_by_builtin.to_string(),
+        );
         module_prop_map.insert("mount".to_owned(), need_mount.to_string());
         if let Some(state) = module_prop_map
             .get("id")

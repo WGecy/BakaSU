@@ -7,7 +7,7 @@ use log::{LevelFilter, error, info};
 
 use crate::{
     android::{
-        debug, dynamic_manager, feature, init_event, ksucalls,
+        builtin_zygisk, debug, dynamic_manager, feature, init_event, ksucalls,
         module::{self, module_config, regenerate_preinit},
         profile, sepolicy, su, sulog, susfs, uapi, umount_config, utils,
     },
@@ -85,6 +85,24 @@ enum Commands {
     UmountConfig {
         #[command(subcommand)]
         command: UmountConfigOp,
+    },
+
+    /// Manage built-in module mounting (Folk Mount)
+    Mount {
+        #[command(subcommand)]
+        command: crate::magic_mount::MountOp,
+    },
+
+    /// Manage the built-in NoMount backend
+    Nomount {
+        #[command(subcommand)]
+        command: crate::nomount::cli::NomountOp,
+    },
+
+    /// Apply and pin the block layer I/O scheduler
+    Iosched {
+        #[command(subcommand)]
+        command: crate::android::iosched::IoschedOp,
     },
 
     /// Emulate system reboot
@@ -173,6 +191,12 @@ enum Commands {
     Initrc {
         #[command(subcommand)]
         command: Initrc,
+    },
+
+    /// Manage built-in Zygisk (NyaZygisk)
+    Zygisk {
+        #[command(subcommand)]
+        command: builtin_zygisk::ZygiskCommand,
     },
 }
 
@@ -628,6 +652,9 @@ pub fn run() -> Result<()> {
             UmountConfigOp::Clear => umount_config::wipe_umount(),
             UmountConfigOp::List => umount_config::list_umount(),
         },
+        Commands::Mount { command } => crate::magic_mount::run(command),
+        Commands::Iosched { command } => crate::android::iosched::run(command),
+        Commands::Nomount { command } => crate::nomount::cli::run(command),
         Commands::SoftReboot => crate::android::soft_reboot::soft_reboot(),
         Commands::Insmod { module, params } => debug::insmod(&module, &params),
         Commands::Module { command } => {
@@ -954,6 +981,7 @@ pub fn run() -> Result<()> {
         Commands::Initrc { command } => match command {
             Initrc::Refresh => regenerate_preinit(),
         },
+        Commands::Zygisk { command } => builtin_zygisk::run(command),
     };
 
     if let Err(e) = &result {

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.twotone.MenuBook
 import androidx.compose.material.icons.twotone.Android
 import androidx.compose.material.icons.twotone.Block
+import androidx.compose.material.icons.twotone.Build
 import androidx.compose.material.icons.twotone.DeveloperBoard
 import androidx.compose.material.icons.twotone.Error
 import androidx.compose.material.icons.twotone.Extension
@@ -89,6 +90,7 @@ import kotlinx.coroutines.withContext
 import org.bakasu.bakasu.BuildConfig
 import org.bakasu.bakasu.Natives.KernelPatchImplementation
 import org.bakasu.bakasu.R
+import org.bakasu.bakasu.domain.model.FolkMountProvider
 import org.bakasu.bakasu.domain.model.HomeSystemInfo
 import org.bakasu.bakasu.domain.model.KernelStatus
 import org.bakasu.bakasu.domain.model.ManagerUpdateChannel
@@ -370,11 +372,13 @@ fun HomePage(
                     systemInfo = uiState.systemInfo,
                     isSimpleMode = uiState.isSimpleMode,
                     showHomeCardIcons = uiState.showHomeCardIcons,
+                    mountProvider = uiState.mountProvider,
+                    mountMetamoduleId = uiState.mountMetamoduleId,
                 )
             }
 
             // 链接卡片
-            if (!uiState.isSimpleMode) {
+            if (!uiState.isSimpleMode && !uiState.isHideLinkCard) {
                 DonateCard(uiState.showHomeCardIcons)
                 LearnMoreCard(uiState.showHomeCardIcons)
             }
@@ -517,6 +521,16 @@ private fun TopBar(
         ),
         actions = {
             if (uiState.isCoreDataLoaded) {
+                // 工具箱入口
+                IconButton(onClick = {
+                    navigator.push(Route.Toolbox)
+                }) {
+                    Icon(
+                        imageVector = Icons.TwoTone.Build,
+                        contentDescription = stringResource(R.string.toolbox_title),
+                    )
+                }
+
                 // SuSFS 配置按钮
                 if (uiState.systemInfo.susfsVersionSupported) {
                     IconButton(onClick = {
@@ -738,8 +752,12 @@ private fun InfoCard(
     systemInfo: HomeSystemInfo,
     isSimpleMode: Boolean,
     showHomeCardIcons: Boolean,
+    mountProvider: FolkMountProvider?,
+    mountMetamoduleId: String?,
 ) {
     val managersList = systemInfo.managersList
+    val metaModuleLabel = mountValue(mountProvider, mountMetamoduleId)
+        ?: systemInfo.metaModuleImplement.takeIf { it.isNotEmpty() && it != "None" }
 
     SegmentedColumn(
         title = stringResource(R.string.home_version_info),
@@ -900,14 +918,30 @@ private fun InfoCard(
         }
 
         item(
-            visible = !isSimpleMode && systemInfo.metaModuleImplement.isNotEmpty() && systemInfo.metaModuleImplement != "None",
+            visible = !isSimpleMode && metaModuleLabel != null,
         ) {
             SettingsBaseWidget(
                 icon = Icons.TwoTone.Extension.takeIf { showHomeCardIcons },
                 iconPlaceholder = false,
                 title = stringResource(R.string.home_meta_module_implement),
-                description = systemInfo.metaModuleImplement,
+                description = metaModuleLabel.orEmpty(),
             )
         }
     }
+}
+
+@Composable
+private fun mountValue(provider: FolkMountProvider?, metamoduleId: String?): String? = when (provider) {
+    FolkMountProvider.METAMODULE -> listOfNotNull(
+        stringResource(R.string.settings_folk_mount_provider_metamodule),
+        metamoduleId?.takeIf { it.isNotBlank() },
+    ).joinToString(" · ")
+
+    FolkMountProvider.BUILTIN -> stringResource(R.string.home_mount_builtin_magic)
+
+    FolkMountProvider.NOMOUNT -> stringResource(R.string.home_mount_builtin_vfs)
+
+    FolkMountProvider.NONE -> stringResource(R.string.settings_folk_mount_mode_off)
+
+    null -> null
 }

@@ -182,11 +182,15 @@ class ModuleRepository(
                 webUiIconPath = value.optString("webuiIcon").takeIf(String::isNotBlank),
                 dirId = value.optString("dir_id", id),
                 moduleUpdate = null,
+                zygisk = value.getBooleanCompat("zygisk"),
+                suppressedByBuiltin = value.getBooleanCompat("suppressed_by_builtin"),
             )
         }
     }
 
     private fun getMetaModuleStatus(): MetaModuleStatus {
+        // The built-in mount engine mounts the modules itself, so the metamodule slot is satisfied.
+        if (ksuCliRepository.isBuiltInMountEngine()) return MetaModuleStatus.ACTIVE
         val directory = "/data/adb/metamodule"
         return when {
             !SuFile.open("$directory/module.prop").exists() -> MetaModuleStatus.MISSING
